@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react'
-import { getPreference, setPreference } from '../utils/preferences.js'
+import { getPreference, setPreference, isPreferencesLoaded } from '../utils/preferences.js'
+import { AuthContext } from './AuthContext.jsx'
 
 /**
  * ProjectStatusContext — Centralized real-time project status tracking.
@@ -61,6 +62,9 @@ function persistStatuses(statuses) {
 }
 
 export function ProjectStatusProvider({ children }) {
+  // Access auth state — only persist to server when user is logged in
+  const auth = useContext(AuthContext)
+
   // Map of projectName → status entry
   const [statuses, setStatuses] = useState(() => loadPersistedStatuses())
   const statusesRef = useRef(statuses)
@@ -70,10 +74,13 @@ export function ProjectStatusProvider({ children }) {
     statusesRef.current = statuses
   }, [statuses])
 
-  // Persist completed statuses
+  // Persist completed statuses — only when user is authenticated
+  // to avoid 401 errors from the preferences API
   useEffect(() => {
+    if (!auth?.token) return
+    if (!isPreferencesLoaded()) return
     persistStatuses(statuses)
-  }, [statuses])
+  }, [statuses, auth?.token])
 
   /**
    * Set/update a project's status.

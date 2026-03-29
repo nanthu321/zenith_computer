@@ -124,6 +124,43 @@
   gap: 2px;
 }
 
+/* ── Shared ThemeToggle override for activity bar context ── */
+.vsc-activity-theme-toggle.theme-toggle-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: none;
+  border-color: transparent;
+  color: rgba(255, 255, 255, 0.30);
+  margin: 3px 0;
+}
+.vsc-activity-theme-toggle.theme-toggle-btn:hover {
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: transparent;
+  box-shadow: none;
+}
+.vsc-activity-theme-toggle.theme-toggle-btn--dark {
+  color: rgba(249, 178, 28, 0.5);
+  background: none;
+  border-color: transparent;
+}
+.vsc-activity-theme-toggle.theme-toggle-btn--dark:hover {
+  color: #F9B21C;
+  background: rgba(249, 178, 28, 0.10);
+  border-color: transparent;
+}
+.vsc-activity-theme-toggle.theme-toggle-btn--light {
+  color: var(--text-tertiary);
+  background: none;
+  border-color: transparent;
+}
+.vsc-activity-theme-toggle.theme-toggle-btn--light:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+  border-color: transparent;
+}
+
 /* ── Activity Button ── */
 .vsc-activity-btn {
   width: 42px;

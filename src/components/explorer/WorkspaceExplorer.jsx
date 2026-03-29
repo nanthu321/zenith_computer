@@ -4,7 +4,7 @@ import { workspaceApi } from "../../api/workspace";
 import FileTree from "./FileTree.jsx";
 import FileViewer from "./FileViewer.jsx";
 import DownloadButton from "./DownloadButton.jsx";
-import ExplorerThemeToggle from "./ExplorerThemeToggle.jsx";
+import ThemeToggle from "../ThemeToggle.jsx";
 import ProjectPreviewPanel from "./ProjectPreviewPanel.jsx";
 import { getFileIcon, getFolderIcon } from "./fileIcons.jsx";
 import { useToast } from "../ToastNotification.jsx";
@@ -641,8 +641,8 @@ export default function WorkspaceExplorer() {
 
         {/* Bottom activity bar icons */}
         <div className="vsc-activity-bottom">
-          {/* Theme Toggle */}
-          <ExplorerThemeToggle size={20} btnClass="ett-activity" />
+          {/* Theme Toggle — uses the shared ThemeToggle component */}
+          <ThemeToggle size="md" className="vsc-activity-theme-toggle" />
           {/* Chat — navigate to main chat page */}
           <ActivityBtn title="Back to Chat" onClick={() => navigate('/chat')}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">

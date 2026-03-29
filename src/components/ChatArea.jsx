@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useMemo } from 'react'
 import MessageBubble from './MessageBubble.jsx'
 import ChatInput from './ChatInput.jsx'
+import ChatQueue from './ChatQueue.jsx'
 import zenithLogo from '../assets/zenith.png'
 
 import './ChatArea.css'
@@ -39,7 +40,12 @@ function getDateKey(dateStr) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
 }
 
-export default function ChatArea({ messages: rawMessages, isStreaming, error, session, agentEvents, artifacts, onSendMessage, onCancelStream, onClearError, user, tasksByMessage, onViewTasks }) {
+export default function ChatArea({
+  messages: rawMessages, isStreaming, error, session, agentEvents, artifacts,
+  onSendMessage, onQueueMessage, onCancelStream, onClearError, user,
+  tasksByMessage, onViewTasks,
+  queueItems, isQueueing, onClearQueueCompleted,
+}) {
   const bottomRef    = useRef(null)
   const containerRef = useRef(null)
 
@@ -109,6 +115,7 @@ export default function ChatArea({ messages: rawMessages, isStreaming, error, se
           <div className="landing-input-wrap">
             <ChatInput
               onSend={onSendMessage}
+              onQueue={onQueueMessage}
               disabled={false}
               isGenerating={isStreaming}
               sessionTitle={session?.title}
@@ -163,6 +170,15 @@ export default function ChatArea({ messages: rawMessages, isStreaming, error, se
             <div ref={bottomRef} />
           </div>
 
+          {/* Chat Queue Display */}
+          {queueItems && queueItems.length > 0 && (
+            <ChatQueue
+              items={queueItems}
+              onClearCompleted={onClearQueueCompleted}
+              isQueueing={isQueueing}
+            />
+          )}
+
           {/* Stop Generation Button */}
           {isStreaming && (
             <div className="stop-generation-wrapper">
@@ -176,6 +192,7 @@ export default function ChatArea({ messages: rawMessages, isStreaming, error, se
           {/* Bottom-pinned input */}
           <ChatInput
             onSend={onSendMessage}
+            onQueue={onQueueMessage}
             disabled={false}
             isGenerating={isStreaming}
             sessionTitle={session?.title}

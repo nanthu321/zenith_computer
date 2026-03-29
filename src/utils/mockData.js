@@ -445,15 +445,35 @@ export const mockHandlers = {
     return _messages[parseInt(sessionId)] || []
   },
 
-  // GET /api/tasks
+  // GET /api/tasks — list all tasks
   'GET /api/tasks': async () => {
     return [..._tasks]
   },
 
-  // POST /api/tasks/:id/cancel
-  'POST /api/tasks/cancel': async (taskId) => {
+  // POST /api/tasks — add/schedule a new task
+  'POST /api/tasks': async (body) => {
+    const newTask = {
+      task_id: `sched_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      description: body?.description || body?.prompt || 'New scheduled task',
+      status: 'scheduled',
+      interval_seconds: body?.interval_seconds || body?.interval_secs || 3600,
+      total_runs: body?.total_runs ?? 0,
+      completed_runs: 0,
+      output_file: null,
+      started_at: null,
+      ends_at: body?.ends_at || null,
+      created_at: new Date().toISOString(),
+      is_active: true,
+    }
+    _tasks.unshift(newTask)
+    return newTask
+  },
+
+  // POST /api/task-cancel/{taskId} — cancel a task
+  // (actual backend servlet route, NOT /api/tasks/{id}/cancel)
+  'POST /api/task-cancel': async (taskId) => {
     _tasks = _tasks.map(t =>
-      t.task_id === taskId ? { ...t, status: 'cancelled' } : t
+      t.task_id === taskId ? { ...t, status: 'cancelled', is_active: false } : t
     )
     return { task_id: taskId, status: 'cancelled' }
   },
@@ -462,7 +482,52 @@ export const mockHandlers = {
   'GET /api/projects': async () => {
     return [..._projects]
   },
+
+  // ── Chat Queue mock handlers ──
+  'POST /api/chat/queue': async (sessionId, body) => {
+    if (!_chatQueue[sessionId]) _chatQueue[sessionId] = []
+    const queue = _chatQueue[sessionId]
+    const item = {
+      id: _nextQueueId++,
+      userId: 1,
+      sessionId: parseInt(sessionId),
+      queuePosition: queue.length + 1,
+      deliveryMode: 'queued',
+      status: 'queued',
+      message: body?.message || '',
+      userMessageId: null,
+      assistantMessageId: null,
+      responseContent: null,
+      errorMessage: null,
+      createdAt: new Date().toISOString(),
+      startedAt: null,
+      completedAt: null,
+    }
+    queue.push(item)
+    // Auto-process after 3 seconds (mock)
+    setTimeout(() => {
+      item.status = 'processing'
+      item.startedAt = new Date().toISOString()
+      setTimeout(() => {
+        item.status = 'completed'
+        item.completedAt = new Date().toISOString()
+        item.responseContent = `Mock response for: "${item.message}"`
+        item.userMessageId = _nextMsgId++
+        item.assistantMessageId = _nextMsgId++
+      }, 2000)
+    }, 3000)
+    return item
+  },
+
+  'GET /api/chat/queue': async (sessionId) => {
+    return _chatQueue[sessionId] || []
+  },
 }
+
+// ── Chat Queue mock state ──
+let _chatQueue = {}   // sessionId -> queue items[]
+let _nextQueueId = 100
+let _nextMsgId = 9000
 
 // ─────────────────────────────────────────────────────────
 //  SSE Stream Simulation for Chat

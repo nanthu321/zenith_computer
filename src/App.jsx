@@ -4,6 +4,7 @@ import { AuthProvider } from './context/AuthContext.jsx'
 import { ThemeProvider } from './context/ThemeContext.jsx'
 import { ProjectStatusProvider } from './context/ProjectStatusContext.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
+import GlobalThemeToggle from './components/GlobalThemeToggle.jsx'
 import LandingPage from './pages/LandingPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import RegisterPage from './pages/RegisterPage.jsx'
@@ -27,46 +28,48 @@ function NavigateSetter() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
+    <AuthProvider>
+      <ThemeProvider>
         <ProjectStatusProvider>
-        <NavigateSetter />
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route
-            path="/chat"
-            element={
-              <ProtectedRoute>
-                <ChatPage />
-              </ProtectedRoute>
-            }
-          />
-          {/* /workspace — fully separate standalone Explorer page */}
-          <Route
-            path="/workspace"
-            element={
-              <ProtectedRoute>
-                <ExplorerPage />
-              </ProtectedRoute>
-            }
-          />
-          {/* /tasks — full-screen Scheduled Tasks manager */}
-          <Route
-            path="/tasks"
-            element={
-              <ProtectedRoute>
-                <div style={{ height: '100vh' }}>
-                  <TaskManager />
-                </div>
-              </ProtectedRoute>
-            }
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+          <NavigateSetter />
+          {/* Global floating theme toggle — visible on pages without an embedded toggle */}
+          <GlobalThemeToggle />
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route
+              path="/chat"
+              element={
+                <ProtectedRoute>
+                  <ChatPage />
+                </ProtectedRoute>
+              }
+            />
+            {/* /workspace — fully separate standalone Explorer page */}
+            <Route
+              path="/workspace"
+              element={
+                <ProtectedRoute>
+                  <ExplorerPage />
+                </ProtectedRoute>
+              }
+            />
+            {/* /tasks — full-screen Scheduled Tasks manager */}
+            <Route
+              path="/tasks"
+              element={
+                <ProtectedRoute>
+                  <div style={{ height: '100vh' }}>
+                    <TaskManager />
+                  </div>
+                </ProtectedRoute>
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
         </ProjectStatusProvider>
-      </AuthProvider>
-    </ThemeProvider>
+      </ThemeProvider>
+    </AuthProvider>
   )
 }

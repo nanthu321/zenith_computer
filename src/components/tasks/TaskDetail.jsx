@@ -82,10 +82,12 @@ export default function TaskDetail({ task: taskSummary, onCancelled }) {
   const load = useCallback(async () => {
     if (!taskSummary) return;
     try {
-      const data = await tasksApi.getTask(taskSummary.task_id);
+      const raw = await tasksApi.getTask(taskSummary.task_id);
+      // Handle both { success, data } and direct object shapes
+      const data = raw?.data || raw;
       setTask(data);
     } catch (e) {
-      console.error(e);
+      console.error('[TaskDetail] Failed to load task:', e.message);
     } finally {
       setLoading(false);
     }

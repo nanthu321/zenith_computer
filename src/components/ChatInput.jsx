@@ -74,7 +74,8 @@ function fileIcon(cat) {
 }
 
 /* ═════════════════════════════════════════════════════════════ */
-export default function ChatInput({ onSend, disabled, isGenerating = false, isLanding = false }) {  const [value, setValue]             = useState('')
+export default function ChatInput({ onSend, onQueue, disabled, isGenerating = false, isLanding = false }) {
+  const [value, setValue]             = useState('')
   const [attachments, setAttachments] = useState([])
   const [dragOver, setDragOver]       = useState(false)
   const [fileError, setFileError]     = useState(null)
@@ -300,7 +301,20 @@ export default function ChatInput({ onSend, disabled, isGenerating = false, isLa
       recognitionRef.current.stop()
     }
     const txt = value.trim()
-    if ((!txt && !attachments.length) || disabled || isGenerating) return
+    if ((!txt && !attachments.length) || disabled) return
+
+    // If currently generating and a queue handler is provided, queue the message
+    if (isGenerating && onQueue) {
+      onQueue(txt)
+      setValue('')
+      clearAll()
+      setMenuOpen(false)
+      if (textareaRef.current) textareaRef.current.style.height = 'auto'
+      return
+    }
+
+    // Normal send (not generating)
+    if (isGenerating) return
     const files = attachments.length ? await toBase64(attachments) : []
     onSend(txt, files)
     setValue('')
@@ -371,7 +385,10 @@ export default function ChatInput({ onSend, disabled, isGenerating = false, isLa
   }
 
   const pick = (ref) => { setMenuOpen(false); ref.current?.click() }
-  const canSend = (value.trim() || attachments.length > 0) && !disabled && !isGenerating
+  // Allow sending even while generating (message gets queued)
+  const hasContent = value.trim() || attachments.length > 0
+  const canQueue = isGenerating && onQueue && value.trim()
+  const canSend = (hasContent && !disabled && !isGenerating) || canQueue
 
   /* ═════ MENU OPTIONS ═════ */
   const menuItems = [
@@ -482,27 +499,47 @@ export default function ChatInput({ onSend, disabled, isGenerating = false, isLa
             {/* Center: Textarea */}
             <textarea
               ref={textareaRef}
-              className={'ci-textarea' + (isGenerating ? ' ci-textarea--generating' : '')}
+              className={'ci-textarea' + (isGenerating && onQueue ? ' ci-textarea--queue-mode' : isGenerating ? ' ci-textarea--generating' : '')}
               value={value}
               onChange={e => setValue(e.target.value)}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
-              placeholder={isGenerating ? 'Type your next message...' : isLanding ? 'Ask me anything…' : 'Message Zenith...'}
+              placeholder={isGenerating && onQueue ? 'Type to queue your next message…' : isGenerating ? 'Generating response...' : isLanding ? 'Ask me anything…' : 'Message Zenith...'}
               disabled={disabled}
               rows={1}
             />
 
             {/* Right: send button */}
             <div className="ci-right">
-              {isGenerating && <span className="ci-dot-pulse" />}
+              {isGenerating && !canQueue && <span className="ci-dot-pulse" />}
               {attachments.length > 0 && <span className="ci-badge">{attachments.length}</span>}
               <button
                 type="submit"
-                className={'ci-send' + (canSend ? ' ci-send--active' : '') + (isGenerating ? ' ci-send--generating' : '')}
+                className={
+                  'ci-send'
+                  + (canSend ? ' ci-send--active' : '')
+                  + (canQueue ? ' ci-send--queue' : '')
+                  + (isGenerating && !canQueue ? ' ci-send--generating' : '')
+                }
                 disabled={!canSend}
-                title={isGenerating ? 'Generating response...' : 'Send (Enter)'}
+                title={
+                  canQueue
+                    ? 'Queue message (will run after current response)'
+                    : isGenerating
+                      ? 'Type a message to queue it'
+                      : 'Send (Enter)'
+                }
               >
-                {isGenerating ? <span className="ci-spinner" /> : I.send}
+                {isGenerating && !canQueue ? (
+                  <span className="ci-spinner" />
+                ) : canQueue ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+                    <rect x="3" y="17" width="18" height="3" rx="1.5" fill="currentColor" opacity="0.3"/>
+                  </svg>
+                ) : (
+                  I.send
+                )}
               </button>
             </div>
           </form>

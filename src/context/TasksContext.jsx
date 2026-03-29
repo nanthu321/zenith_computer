@@ -143,9 +143,10 @@ export function TasksProvider({ children }) {
   }, [])
 
   // ── Cancel a task ────────────────────────────────────────────────────────
+  // Actual backend route: POST /api/task-cancel/{taskId}
   const cancelTask = useCallback(async (taskId) => {
     try {
-      await apiFetch(`/api/tasks/${taskId}/cancel`, { method: 'POST' })
+      await apiFetch(`/api/task-cancel/${encodeURIComponent(taskId)}`, { method: 'POST' })
       setTasks(prev =>
         prev.map(t =>
           t.task_id === taskId ? { ...t, status: TASK_STATUS.CANCELLED, is_active: false } : t
@@ -153,6 +154,27 @@ export function TasksProvider({ children }) {
       )
     } catch (err) {
       throw err // let caller handle
+    }
+  }, [])
+
+  // ── Add a new task via API ───────────────────────────────────────────────
+  const addNewTask = useCallback(async (taskData) => {
+    try {
+      const result = await apiFetch('/api/tasks', {
+        method: 'POST',
+        body: JSON.stringify(taskData),
+      })
+      const normalized = normalizeTask(result)
+      if (normalized && normalized.task_id) {
+        setTasks(prev => {
+          const exists = prev.some(t => t.task_id === normalized.task_id)
+          if (exists) return prev
+          return [normalized, ...prev]
+        })
+      }
+      return normalized
+    } catch (err) {
+      throw err
     }
   }, [])
 
@@ -172,6 +194,7 @@ export function TasksProvider({ children }) {
     addTaskFromResponse,
     clearTaskForMessage,
     cancelTask,
+    addNewTask,
     updateTaskStatus,
     setTasks,
   }

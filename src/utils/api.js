@@ -1,4 +1,4 @@
-import { API_BASE_URL } from './constants.js'
+ import { API_BASE_URL } from './constants.js'
 import { mockHandlers, mockStreamChat } from './mockData.js'
 import { getCookie, clearAllZenithCookies } from './cookieUtils.js'
 import { getPreference } from './preferences.js'
@@ -133,8 +133,41 @@ function matchMock(method, path, body) {
   const getMsg = path.match(/^\/api\/sessions\/(\d+)\/messages$/)
   if (method === 'GET' && getMsg) return mockHandlers['GET /api/sessions/messages'](getMsg[1])
 
-  const cancelTask = path.match(/^\/api\/tasks\/(.+)\/cancel$/)
-  if (method === 'POST' && cancelTask) return mockHandlers['POST /api/tasks/cancel'](cancelTask[1])
+  // Task cancel — actual backend route: POST /api/task-cancel/{taskId}
+  const cancelTask = path.match(/^\/api\/task-cancel\/(.+)$/)
+  if (method === 'POST' && cancelTask) return mockHandlers['POST /api/task-cancel'](cancelTask[1])
+
+  // Legacy cancel route (kept for backward compatibility)
+  const cancelTaskLegacy = path.match(/^\/api\/tasks\/(.+)\/cancel$/)
+  if (method === 'POST' && cancelTaskLegacy) return mockHandlers['POST /api/task-cancel'](cancelTaskLegacy[1])
+
+  // Task detail — GET /api/tasks/{taskId}
+  const getTaskDetail = path.match(/^\/api\/tasks\/([^/]+)$/)
+  if (method === 'GET' && getTaskDetail) {
+    // Return a matching task from mock data, or null
+    const taskId = getTaskDetail[1]
+    const handler = mockHandlers['GET /api/tasks']
+    if (handler) {
+      return handler().then(tasks => {
+        const arr = Array.isArray(tasks) ? tasks : (tasks?.tasks || [])
+        const task = arr.find(t => t.task_id === taskId)
+        return task || null
+      })
+    }
+    return null
+  }
+
+  // Chat queue — POST /api/chat/{sessionId}/queue  (add to queue)
+  const postQueue = path.match(/^\/api\/chat\/(\d+)\/queue$/)
+  if (method === 'POST' && postQueue) {
+    return mockHandlers['POST /api/chat/queue'](postQueue[1], body)
+  }
+
+  // Chat queue — GET /api/chat/{sessionId}/queue  (get status)
+  const getQueue = path.match(/^\/api\/chat\/(\d+)\/queue$/)
+  if (method === 'GET' && getQueue) {
+    return mockHandlers['GET /api/chat/queue'](getQueue[1])
+  }
 
   return null
 }
@@ -376,8 +409,9 @@ export function streamChat(sessionId, message, callbacks) {
       }
 
       if (!response.ok) {
-        // Read the actual error message from the JSON body
+
         let errorMsg = `Server error: ${response.status}`
+        let errorCode = response.status
         try {
           const contentType = response.headers.get('content-type') || ''
           if (contentType.includes('application/json')) {
@@ -388,8 +422,18 @@ export function streamChat(sessionId, message, callbacks) {
             console.error(`[streamChat] Non-JSON error response:`, text.substring(0, 300))
           }
         } catch {
-          // Could not parse error body — use generic message
+
         }
+
+        // 409 Conflict — another prompt is already running for this session.
+        // Signal the caller so the frontend can redirect the message to /queue.
+        if (errorCode === 409) {
+          const conflictErr = new Error(errorMsg)
+          conflictErr.status = 409
+          conflictErr.code = 'CONFLICT_ALREADY_RUNNING'
+          throw conflictErr
+        }
+
         throw new Error(errorMsg)
       }
 
@@ -532,6 +576,38 @@ export function streamChat(sessionId, message, callbacks) {
     })
 
   return controller
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Chat Queue API
+//  Allows queuing follow-up prompts while a prompt is still running.
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * Add a prompt to the chat queue for a session.
+ * POST /api/chat/{sessionId}/queue
+ *
+ * @param {string|number} sessionId
+ * @param {string} message
+ * @returns {Promise<Object>} The queued item with id, queuePosition, status, etc.
+ */
+export async function queuePrompt(sessionId, message) {
+  return apiFetch(`/api/chat/${sessionId}/queue`, {
+    method: 'POST',
+    body: JSON.stringify({ message }),
+  })
+}
+
+/**
+ * Get the current queue status for a session.
+ * GET /api/chat/{sessionId}/queue
+ *
+ * @param {string|number} sessionId
+ * @returns {Promise<Array>} Array of queue items with status, position, etc.
+ */
+export async function getQueueStatus(sessionId) {
+  const data = await apiFetch(`/api/chat/${sessionId}/queue`)
+  return Array.isArray(data) ? data : (data?.items ?? data?.queue ?? [])
 }
 
 // ─────────────────────────────────────────────────────────────────

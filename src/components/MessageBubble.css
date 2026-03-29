@@ -342,64 +342,6 @@
 }
 
 /* ══════════════════════════════════════════════════════════════
-   DIV 1 — SSE Events Container
-   Holds LiveStatusBar + ToolActivitySummary only.
-   Shown while there are active/completed SSE events or tool calls.
-   ══════════════════════════════════════════════════════════════ */
-
-.sse-events-container {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 100%;
-  min-width: 0;
-  padding: 10px 14px;
-  border-radius: 14px;
-  background: var(--bg-overlay);
-  border: 1px solid var(--border-subtle);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.10);
-  position: relative;
-  overflow: hidden;
-  animation: sse-events-in 0.22s ease;
-}
-
-@keyframes sse-events-in {
-  from { opacity: 0; transform: translateY(5px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-/* Streaming state — pulsing left accent border */
-.sse-events-container--streaming {
-  border-color: rgba(99, 102, 241, 0.30);
-  border-left: 3px solid rgba(99, 102, 241, 0.55);
-  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.08), 0 1px 3px rgba(0, 0, 0, 0.10);
-  animation: sse-events-in 0.22s ease,
-             sse-events-pulse 2.4s ease-in-out infinite 0.22s;
-}
-
-@keyframes sse-events-pulse {
-  0%, 100% { border-left-color: rgba(99, 102, 241, 0.45); }
-  50%      { border-left-color: rgba(139, 92, 246, 0.75); }
-}
-
-/* Remove bottom margin from last tool in events container */
-.sse-events-container > .claude-activity-summary {
-  margin-bottom: 0;
-}
-
-/* Light theme */
-[data-theme="light"] .sse-events-container {
-  background: var(--bg-card);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
-}
-
-[data-theme="light"] .sse-events-container--streaming {
-  border-color: rgba(99, 102, 241, 0.20);
-  border-left-color: rgba(99, 102, 241, 0.50);
-  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.06);
-}
-
-/* ══════════════════════════════════════════════════════════════
    DIV 2 — Final Response Container
    Holds the streamed / completed message text + artifacts.
    Always rendered for assistant messages.
@@ -481,12 +423,32 @@
 
 /* Light theme */
 [data-theme="light"] .sse-final-response {
+  background: #ffffff;
+  border-color: #d0d8e8;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
 }
 
 [data-theme="light"] .sse-final-response--streaming {
-  border-color: rgba(99, 102, 241, 0.22);
-  box-shadow: 0 2px 14px rgba(99, 102, 241, 0.08), 0 1px 6px rgba(0, 0, 0, 0.06);
+  background: #ffffff;
+  border-color: rgba(99, 102, 241, 0.28);
+  box-shadow: 0 2px 14px rgba(99, 102, 241, 0.10), 0 1px 6px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .sse-final-response--streaming::before {
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(34, 109, 180, 0.45),
+    rgba(99, 102, 241, 0.45),
+    rgba(34, 109, 180, 0.45),
+    transparent
+  );
+  background-size: 200% 100%;
+}
+
+/* Light theme — error */
+[data-theme="light"] .sse-final-response--error {
+  background: rgba(228, 37, 39, 0.04);
+  border-color: rgba(228, 37, 39, 0.22);
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -1700,6 +1662,25 @@
   40%           { opacity: 1;   transform: scale(1.2) translateY(-4px); }
 }
 
+/* ── Light theme — Thinking dots ── */
+[data-theme="light"] .msg-thinking-dots {
+  background: linear-gradient(135deg, #f0f2ff, #e8ecf8);
+  border-color: #c8d4e8;
+  box-shadow: 0 2px 10px rgba(34, 109, 180, 0.10);
+}
+
+[data-theme="light"] .msg-thinking-dots span {
+  background: linear-gradient(135deg, #226DB4, #4a8ecf);
+  box-shadow: 0 0 6px rgba(34, 109, 180, 0.35);
+}
+
+/* Inside sse-final-response, reset bg for thinking dots (both themes) */
+[data-theme="light"] .sse-final-response > .msg-thinking-dots {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
 /* ── Markdown content container ── */
 .msg-content {
   overflow-wrap: anywhere;
@@ -1933,4 +1914,266 @@
 
 .msg-action-btn--user.msg-action-btn--active:hover {
   background: rgba(10, 153, 73, 0.10) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   LIGHT THEME — Streaming / Response Generation Overrides
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Live Status Bar (thinking / tool phase) ── */
+[data-theme="light"] .lsb-thinking {
+  background: linear-gradient(135deg, rgba(34, 109, 180, 0.08), rgba(99, 102, 241, 0.06));
+  border-color: rgba(34, 109, 180, 0.28);
+  color: #1a3a5c;
+  box-shadow: 0 2px 10px rgba(34, 109, 180, 0.10);
+}
+
+[data-theme="light"] .lsb-thinking::before {
+  background: linear-gradient(90deg, transparent 0%, rgba(34, 109, 180, 0.10) 50%, transparent 100%);
+  background-size: 200% 100%;
+}
+
+[data-theme="light"] .lsb-tool {
+  background: linear-gradient(135deg, rgba(34, 109, 180, 0.08), rgba(99, 102, 241, 0.05));
+  border-color: rgba(34, 109, 180, 0.25);
+  color: #1a3a5c;
+  box-shadow: 0 2px 10px rgba(34, 109, 180, 0.08);
+}
+
+[data-theme="light"] .lsb-tool::before {
+  background: linear-gradient(90deg, transparent 0%, rgba(34, 109, 180, 0.10) 50%, transparent 100%);
+  background-size: 200% 100%;
+}
+
+[data-theme="light"] .lsb-spinner {
+  border-color: rgba(34, 109, 180, 0.18);
+  border-top-color: #226DB4;
+  border-right-color: #4a8ecf;
+}
+
+[data-theme="light"] .lsb-spinner-thinking {
+  border-color: rgba(34, 109, 180, 0.18);
+  border-top-color: #226DB4;
+  border-right-color: #4a8ecf;
+}
+
+[data-theme="light"] .lsb-args {
+  color: #567890;
+}
+
+[data-theme="light"] .lsb-iteration {
+  color: #226DB4;
+  background: rgba(34, 109, 180, 0.10);
+}
+
+/* ── Claude-style Activity Indicators (live / done) ── */
+[data-theme="light"] .claude-activity-live {
+  background: linear-gradient(135deg, rgba(34, 109, 180, 0.10), rgba(99, 102, 241, 0.06));
+  border-color: rgba(34, 109, 180, 0.30);
+  color: #1a3a5c;
+  box-shadow: 0 2px 8px rgba(34, 109, 180, 0.10);
+}
+
+[data-theme="light"] .claude-activity-live::before {
+  background: linear-gradient(90deg, transparent, rgba(34, 109, 180, 0.10), transparent);
+}
+
+[data-theme="light"] .claude-activity-spinner {
+  border-color: rgba(34, 109, 180, 0.18);
+  border-top-color: #226DB4;
+  border-right-color: #4a8ecf;
+}
+
+[data-theme="light"] .claude-activity-done {
+  background: #f5f7ff;
+  border-color: #d0d8e8;
+  color: #567890;
+}
+
+[data-theme="light"] .claude-activity-done[role="button"]:hover {
+  background: #eef1fa;
+  border-color: #b8c8dc;
+  color: #2e4458;
+}
+
+[data-theme="light"] .claude-activity-args {
+  color: #7a90a5;
+}
+
+[data-theme="light"] .claude-activity-iteration {
+  color: #226DB4;
+  background: rgba(34, 109, 180, 0.10);
+}
+
+[data-theme="light"] .claude-activity-thinking {
+  background: linear-gradient(135deg, rgba(34, 109, 180, 0.10), rgba(99, 102, 241, 0.06));
+  border-color: rgba(34, 109, 180, 0.30);
+  box-shadow: 0 2px 10px rgba(34, 109, 180, 0.12);
+}
+
+[data-theme="light"] .claude-activity-thinking .claude-activity-spinner {
+  border-color: rgba(34, 109, 180, 0.18);
+  border-top-color: #226DB4;
+  border-right-color: #4a8ecf;
+}
+
+/* ── Tool Result Output (expanded panel) ── */
+[data-theme="light"] .tool-result-output {
+  background: #f8f9ff;
+  border-color: #d0d8e8;
+}
+
+[data-theme="light"] .tool-result-pre {
+  color: #1a2a3a;
+}
+
+[data-theme="light"] .tool-result-pre-err {
+  color: #c92022;
+}
+
+[data-theme="light"] .tool-result-exit-ok {
+  background: rgba(10, 153, 73, 0.10);
+  color: #0A9949;
+}
+
+[data-theme="light"] .tool-result-exit-err {
+  background: rgba(228, 37, 39, 0.10);
+  color: #c92022;
+}
+
+[data-theme="light"] .tool-result-file-chip {
+  background: #eef1fa;
+  border-color: #d0d8e8;
+  color: #2e4458;
+}
+
+/* ── Streaming Cursor ── */
+[data-theme="light"] .msg-cursor {
+  background: linear-gradient(180deg, #226DB4, #4a8ecf);
+  box-shadow: 0 0 4px rgba(34, 109, 180, 0.35);
+}
+
+/* ── Error state ── */
+[data-theme="light"] .msg-error-inner {
+  color: #c92022;
+}
+
+/* ── Inline Code (light theme adjustment) ── */
+[data-theme="light"] .msg-content .inline-code {
+  background: rgba(34, 109, 180, 0.06);
+  color: #226DB4;
+  border-color: rgba(34, 109, 180, 0.15);
+}
+
+/* ── Code block (light theme) ── */
+[data-theme="light"] .msg-content .code-block-wrapper {
+  border-color: #d0d8e8;
+}
+
+[data-theme="light"] .msg-content .code-lang {
+  background: #f0f2f8;
+  color: #567890;
+  border-bottom-color: #d0d8e8;
+}
+
+[data-theme="light"] .msg-content .code-block {
+  background: #f8f9fc;
+  color: #1a2a3a;
+}
+
+/* ── Live Search Panel — light theme ── */
+[data-theme="light"] .live-search-panel {
+  border-color: #d0d8e8;
+}
+
+[data-theme="light"] .live-search-panel--loading {
+  background: #f8f9ff;
+}
+
+[data-theme="light"] .live-search-panel--streaming {
+  background: #f8f9ff;
+  border-color: rgba(34, 109, 180, 0.22);
+}
+
+[data-theme="light"] .live-search-panel--done {
+  background: #f8f9ff;
+}
+
+[data-theme="light"] .live-search-header {
+  background: #eef1fa;
+  border-bottom-color: #d0d8e8;
+  color: #567890;
+}
+
+[data-theme="light"] .live-search-label {
+  color: #2e4458;
+}
+
+[data-theme="light"] .live-search-spinner {
+  border-color: rgba(34, 109, 180, 0.18);
+  border-top-color: #226DB4;
+  border-right-color: #4a8ecf;
+}
+
+[data-theme="light"] .live-search-skeleton {
+  background: #eef1fa;
+  border-color: #d0d8e8;
+}
+
+[data-theme="light"] .live-search-skeleton-title {
+  background: linear-gradient(90deg, rgba(34, 109, 180, 0.12), rgba(99, 102, 241, 0.08), rgba(34, 109, 180, 0.12));
+  background-size: 200% 100%;
+}
+
+[data-theme="light"] .live-search-domain {
+  color: #7a90a5;
+}
+
+[data-theme="light"] .live-search-result-snippet {
+  color: #4a6070;
+}
+
+[data-theme="light"] .live-search-more {
+  color: #8aa0b4;
+}
+
+/* ── Suppressed HTML block — light theme ── */
+[data-theme="light"] .code-block-suppressed {
+  background: #f0f2f8;
+  border-color: #c8d4e8;
+}
+
+[data-theme="light"] .code-block-suppressed-text {
+  color: #567890;
+}
+
+/* ── User bubble — light theme ── */
+[data-theme="light"] .msg-bubble--user {
+  background: linear-gradient(135deg, #226DB4, #1a5a96);
+  color: #ffffff;
+  box-shadow: 0 2px 12px rgba(34, 109, 180, 0.20);
+}
+
+/* ── Bot avatar glow — light theme ── */
+[data-theme="light"] .msg-avatar--streaming {
+  animation: avatar-glow-pulse-light 3s ease-in-out infinite;
+}
+
+@keyframes avatar-glow-pulse-light {
+  0%, 100% { box-shadow: 0 0 10px rgba(34, 109, 180, 0.20); }
+  25%      { box-shadow: 0 0 16px rgba(10, 153, 73, 0.25); }
+  50%      { box-shadow: 0 0 20px rgba(228, 37, 39, 0.20); }
+  75%      { box-shadow: 0 0 16px rgba(249, 178, 28, 0.25); }
+}
+
+/* ── Old typing dots (mb-typing-dots) — light theme ── */
+[data-theme="light"] .mb-typing-dots {
+  background: linear-gradient(135deg, #f0f2ff, #e8ecf8);
+  border-color: #c8d4e8;
+  box-shadow: 0 2px 8px rgba(34, 109, 180, 0.08);
+}
+
+[data-theme="light"] .mb-typing-dots span {
+  background: linear-gradient(135deg, #226DB4, #4a8ecf);
+  box-shadow: 0 0 5px rgba(34, 109, 180, 0.30);
 }

@@ -126,10 +126,10 @@ describe('1. API Request Validation — /api/tasks endpoint', () => {
     expect(Object.keys(headers)).not.toContain('Authorization')
   })
 
-  it('✅ Cancel task uses POST /api/tasks/{id}/cancel', () => {
+  it('✅ Cancel task uses POST /api/task-cancel/{id} (actual backend route)', () => {
     const taskId = 'task_abc123'
-    const endpoint = `/api/tasks/${taskId}/cancel`
-    expect(endpoint).toBe('/api/tasks/task_abc123/cancel')
+    const endpoint = `/api/task-cancel/${taskId}`
+    expect(endpoint).toBe('/api/task-cancel/task_abc123')
     expect(endpoint).not.toContain('undefined')
   })
 
@@ -139,10 +139,17 @@ describe('1. API Request Validation — /api/tasks endpoint', () => {
     expect(endpoint).toBe('/api/tasks/task_xyz789')
   })
 
-  it('✅ Download task output uses GET /api/tasks/{id}/download', () => {
+  it('✅ Download task output uses GET /api/task-download/{id} (actual backend route)', () => {
     const taskId = 'task_download_001'
-    const endpoint = `/api/tasks/${taskId}/download`
-    expect(endpoint).toBe('/api/tasks/task_download_001/download')
+    const endpoint = `/api/task-download/${taskId}`
+    expect(endpoint).toBe('/api/task-download/task_download_001')
+  })
+
+  it('✅ Add task uses POST /api/tasks', () => {
+    const endpoint = '/api/tasks'
+    const method = 'POST'
+    expect(endpoint).toBe('/api/tasks')
+    expect(method).toBe('POST')
   })
 
   it('✅ Expired JWT is detectable before making request', () => {

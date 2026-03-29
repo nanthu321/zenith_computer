@@ -57,6 +57,7 @@ export function getPreference(key, defaultValue = null) {
  * Set a preference value.
  * Updates the in-memory cache immediately (synchronous) and
  * persists to the server asynchronously (fire-and-forget).
+ * Includes a single retry on transient server errors.
  */
 export function setPreference(key, value) {
   _cache[key] = value
@@ -65,15 +66,31 @@ export function setPreference(key, value) {
   // Fire-and-forget PUT to server
   const payload = { [key]: value }
   console.log(`[preferences] 🔼 Saving preference to backend — key: "${key}", value:`, value)
-  console.log(`[preferences] 🔼 PUT /api/auth/preferences — payload:`, JSON.stringify(payload))
 
   apiFetch('/api/auth/preferences', {
     method: 'PUT',
     body: JSON.stringify(payload),
-  }).then(response => {
-    console.log(`[preferences] ✅ Preference saved successfully — key: "${key}", value:`, value, '| server response:', response)
+  }).then(() => {
+    console.log(`[preferences] ✅ Preference saved successfully — key: "${key}"`)
   }).catch(err => {
-    console.error(`[preferences] ❌ Failed to save preference — key: "${key}", value:`, value, '| error:', err.message)
+    const msg = err.message || ''
+    const isTransient = /^(502|503|5\d\d\s*-|Cannot reach|network)/i.test(msg)
+    if (isTransient) {
+      // Retry once after a short delay for transient failures (cold-start, etc.)
+      console.warn(`[preferences] ⚠️ Transient error saving "${key}", retrying in 2s:`, msg)
+      setTimeout(() => {
+        apiFetch('/api/auth/preferences', {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        }).then(() => {
+          console.log(`[preferences] ✅ Retry succeeded for "${key}"`)
+        }).catch(retryErr => {
+          console.error(`[preferences] ❌ Retry also failed for "${key}":`, retryErr.message)
+        })
+      }, 2000)
+    } else {
+      console.error(`[preferences] ❌ Failed to save preference — key: "${key}":`, msg)
+    }
   })
 }
 
@@ -83,15 +100,36 @@ export function setPreference(key, value) {
  * that resolves on success and rejects on failure.
  * Use this when you need to confirm the preference was persisted
  * (e.g., after a "Save" button click).
+ *
+ * Includes a single retry on transient failures (502/503/network)
+ * since the backend (Render free tier) may be cold-starting.
  */
 export async function savePreferenceAsync(key, value) {
   _cache[key] = value
   _loaded = true
 
-  await apiFetch('/api/auth/preferences', {
-    method: 'PUT',
-    body: JSON.stringify({ [key]: value }),
-  })
+  const payload = { [key]: value }
+
+  try {
+    await apiFetch('/api/auth/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    })
+  } catch (firstErr) {
+    // Retry once on transient/server errors (502, 503, network)
+    const msg = firstErr.message || ''
+    const isTransient = /^(502|503|5\d\d\s*-|Cannot reach|network)/i.test(msg)
+    if (isTransient) {
+      console.warn('[preferences] Transient error on save, retrying in 2s:', msg)
+      await new Promise(r => setTimeout(r, 2000))
+      await apiFetch('/api/auth/preferences', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      })
+    } else {
+      throw firstErr
+    }
+  }
 }
 
 

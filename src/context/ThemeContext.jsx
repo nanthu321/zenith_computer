@@ -15,8 +15,9 @@
  * "system" means follow the OS preference; the resolved (applied)
  * theme is always either "dark" or "light" in the DOM.
  */
-import React, { createContext, useState, useEffect, useCallback, useRef } from 'react'
+import React, { createContext, useState, useEffect, useCallback, useRef, useContext } from 'react'
 import { apiFetch } from '../utils/api.js'
+import { AuthContext } from './AuthContext.jsx'
 
 export const ThemeContext = createContext(null)
 
@@ -102,6 +103,9 @@ function saveServerTheme(pref) {
 /* ── provider ──────────────────────────────────────────── */
 
 export function ThemeProvider({ children }) {
+  // Access auth state — only fetch server theme when user is logged in
+  const auth = useContext(AuthContext)
+
   // preference = what the user chose (dark | light | system)
   const [preference, setPreferenceState] = useState(() => {
     const pref = getInitialPreference()
@@ -128,24 +132,30 @@ export function ThemeProvider({ children }) {
     setResolved(newResolved)
     applyTheme(newResolved)
 
-    // Persist locally
+    // Persist locally (always — works even when not logged in)
     writeLocalTheme(newPref)
     console.log(`[ThemeContext] 💾 Saved to localStorage: "${newPref}"`)
 
-    // Persist to server
-    saveServerTheme(newPref)
-  }, [preference])
+    // Persist to server only when user is authenticated
+    if (auth?.token) {
+      saveServerTheme(newPref)
+    }
+  }, [preference, auth?.token])
 
-  /** Quick toggle: dark → light → system → dark … */
+  /** Quick toggle: dark ↔ light */
   const toggleTheme = useCallback(() => {
-    const order = [THEMES.DARK, THEMES.LIGHT, THEMES.SYSTEM]
-    const idx = order.indexOf(preference)
-    const next = order[(idx + 1) % order.length]
+    const next = isDark ? THEMES.LIGHT : THEMES.DARK
     setTheme(next)
-  }, [preference, setTheme])
+  }, [isDark, setTheme])
 
-  // On mount: reconcile with server
+  // On mount (or when user logs in): reconcile with server
+  // Only fetch from server when user is authenticated to avoid 401 errors
   useEffect(() => {
+    if (!auth?.token) {
+      // Not logged in — reset reconciled flag so we fetch when user logs in
+      reconciledRef.current = false
+      return
+    }
     if (reconciledRef.current) return
     reconciledRef.current = true
 
@@ -159,7 +169,7 @@ export function ThemeProvider({ children }) {
         writeLocalTheme(serverPref)
       }
     })
-  }, [])
+  }, [auth?.token])
 
   // Listen for OS-level theme changes (relevant when preference === 'system')
   useEffect(() => {

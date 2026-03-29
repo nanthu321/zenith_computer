@@ -767,31 +767,6 @@ export default function MessageBubble({ message, isLast, agentEvents, artifacts,
           <div className="msg-bubble msg-bubble--user">{message.content}</div>
         )}
 
-        {/* ═══════════════════════════════════════════════════════
-            DIV 1 — SSE EVENTS CONTAINER
-            Holds live status bar + tool activity rows only.
-            Visible only while there are events/tool calls to show.
-            ═══════════════════════════════════════════════════════ */}
-        {!isUser && (isStreamingNow || hasCompletedTools) && (
-          <div className={`sse-events-container${isStreamingNow ? ' sse-events-container--streaming' : ''}`}>
-
-            {/* LIVE STATUS BAR — shown only while streaming */}
-            {isStreamingNow && (
-              <LiveStatusBar phase={livePhase} />
-            )}
-
-            {/* COMPLETED / RUNNING TOOL ROWS */}
-            {hasCompletedTools && (
-              <ToolActivitySummary
-                toolCalls={toolCalls}
-                agentEvents={agentEvents}
-                isStreaming={isStreamingNow}
-                onNavigate={handleOpenInExplorer}
-              />
-            )}
-          </div>
-        )}
-
         {/* ── Project Status Indicators (attached to relevant message) ── */}
         {!isUser && messageProjectStatuses.length > 0 && (
           <div className="msg-project-statuses">

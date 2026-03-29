@@ -1,115 +1,161 @@
 /* ============================================================
-   Zenith — Theme Toggle Button
-   Animated sun/moon pill toggle
+   Zenith — Theme Toggle (Sun / Moon Icon Button)
+   Minimal, modern single-icon toggle with smooth animations
    ============================================================ */
 
-.theme-toggle {
+/* -- Button -- */
+.theme-toggle-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  background: none;
-  border: none;
+  justify-content: center;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
   cursor: pointer;
+  border-radius: var(--radius-full, 9999px);
+  color: var(--text-secondary);
+  transition: background 0.25s ease,
+              border-color 0.25s ease,
+              color 0.25s ease,
+              transform 0.2s ease,
+              box-shadow 0.25s ease;
   padding: 0;
-  font-family: var(--font-sans);
-  transition: var(--transition-fast);
   flex-shrink: 0;
+  overflow: hidden;
 }
 
-.theme-toggle:focus-visible {
-  outline: 2px solid var(--brand-primary);
-  outline-offset: 3px;
-  border-radius: var(--radius-full);
+/* -- Size variants -- */
+.theme-toggle-btn--sm {
+  width: 34px;
+  height: 34px;
 }
 
-/* ── Track (pill background) ── */
-.theme-toggle-track {
+.theme-toggle-btn--md {
+  width: 38px;
+  height: 38px;
+}
+
+.theme-toggle-btn--lg {
+  width: 42px;
+  height: 42px;
+}
+
+/* -- Hover / Active / Focus -- */
+.theme-toggle-btn:hover {
+  background: var(--bg-active);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+  transform: scale(1.08);
+  box-shadow: 0 0 12px rgba(249, 178, 28, 0.15);
+}
+
+.theme-toggle-btn:active {
+  transform: scale(0.95);
+}
+
+.theme-toggle-btn:focus-visible {
+  outline: 2px solid var(--brand-primary, #226DB4);
+  outline-offset: 2px;
+}
+
+/* -- Dark mode specifics -- */
+.theme-toggle-btn--dark {
+  background: rgba(249, 178, 28, 0.08);
+  border-color: rgba(249, 178, 28, 0.15);
+  color: #F9B21C;
+}
+
+.theme-toggle-btn--dark:hover {
+  background: rgba(249, 178, 28, 0.16);
+  border-color: rgba(249, 178, 28, 0.30);
+  color: #fcc850;
+  box-shadow: 0 0 16px rgba(249, 178, 28, 0.20);
+}
+
+/* -- Light mode specifics -- */
+.theme-toggle-btn--light {
+  background: rgba(34, 109, 180, 0.06);
+  border-color: rgba(34, 109, 180, 0.15);
+  color: #226DB4;
+}
+
+.theme-toggle-btn--light:hover {
+  background: rgba(34, 109, 180, 0.12);
+  border-color: rgba(34, 109, 180, 0.30);
+  color: #1a5a96;
+  box-shadow: 0 0 16px rgba(34, 109, 180, 0.15);
+}
+
+/* -- Icon wrapper (positions icons on top of each other) -- */
+.theme-toggle-btn__icon-wrap {
   position: relative;
-  width: 44px;
-  height: 24px;
-  border-radius: var(--radius-full);
-  background: var(--bg-overlay);
-  border: 1.5px solid var(--border-default);
-  transition: background 0.25s ease, border-color 0.25s ease;
-  display: flex;
-  align-items: center;
-  padding: 2px;
-}
-
-.theme-toggle:hover .theme-toggle-track {
-  border-color: var(--brand-primary);
-}
-
-/* ── Dark → light colors ── */
-.theme-dark .theme-toggle-track {
-  background: #0f1a28;
-  border-color: #253545;
-}
-
-.theme-light .theme-toggle-track {
-  background: #e0e8f0;
-  border-color: #a0b8cc;
-}
-
-/* ── Thumb (sliding circle) ── */
-.theme-toggle-thumb {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--brand-primary);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
-              background 0.25s ease;
-  transform: translateX(0px);
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  width: 100%;
+  height: 100%;
 }
 
-/* Move thumb to right in light mode */
-.theme-light .theme-toggle-thumb {
-  transform: translateX(20px);
-  background: var(--brand-primary);
-}
-
-/* ── Icons ── */
-.theme-icon {
+/* -- Icons — absolute positioned for crossfade -- */
+.theme-toggle-btn__icon {
   position: absolute;
-  width: 12px;
-  height: 12px;
-  color: white;
-  transition: opacity 0.2s ease, transform 0.3s ease;
+  transition: opacity 0.3s ease,
+              transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* Dark mode: show moon, hide sun */
-.theme-dark .theme-icon-sun  { opacity: 0; transform: rotate(90deg) scale(0.5); }
-.theme-dark .theme-icon-moon { opacity: 1; transform: rotate(0deg) scale(1); }
+.theme-toggle-btn--dark .theme-toggle-btn__icon--moon {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+}
+
+.theme-toggle-btn--dark .theme-toggle-btn__icon--sun {
+  opacity: 0;
+  transform: rotate(90deg) scale(0.4);
+}
 
 /* Light mode: show sun, hide moon */
-.theme-light .theme-icon-sun  { opacity: 1; transform: rotate(0deg) scale(1); }
-.theme-light .theme-icon-moon { opacity: 0; transform: rotate(-90deg) scale(0.5); }
+.theme-toggle-btn--light .theme-toggle-btn__icon--sun {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+}
 
-/* ── Label ── */
-.theme-toggle-label {
-  font-size: 0.82rem;
+.theme-toggle-btn--light .theme-toggle-btn__icon--moon {
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.4);
+}
+
+/* -- Custom CSS Tooltip -- */
+.theme-toggle-btn::after {
+  content: attr(title);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background: var(--bg-elevated, #14141f);
+  color: var(--text-primary, #f0f0fa);
+  font-size: 0.72rem;
   font-weight: 500;
-  color: var(--text-secondary);
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  padding: 4px 10px;
+  border-radius: 6px;
   white-space: nowrap;
-  transition: color 0.2s ease;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  border: 1px solid var(--border-subtle, #1a2535);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 100;
 }
 
-.theme-toggle:hover .theme-toggle-label {
-  color: var(--text-primary);
+.theme-toggle-btn:hover::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
-/* ── Size variants ── */
-.theme-toggle-sm .theme-toggle-track { width: 40px; height: 22px; }
-.theme-toggle-sm .theme-toggle-thumb { width: 16px; height: 16px; }
-.theme-toggle-sm .theme-icon         { width: 10px; height: 10px; }
-.theme-toggle-sm.theme-light .theme-toggle-thumb { transform: translateX(18px); }
-
-.theme-toggle-md .theme-toggle-track { width: 48px; height: 26px; }
-.theme-toggle-md .theme-toggle-thumb { width: 20px; height: 20px; }
-.theme-toggle-md.theme-light .theme-toggle-thumb { transform: translateX(22px); }
+/* Hide tooltip on mobile / touch */
+@media (max-width: 768px) {
+  .theme-toggle-btn::after {
+    display: none;
+  }
+}

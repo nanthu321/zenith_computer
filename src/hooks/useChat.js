@@ -342,6 +342,13 @@ export function useChat() {
     onBackgroundCompleteRef.current = callback
   }, [])
 
+  // 409 Conflict callback — registered by ChatPage to auto-queue on conflict
+  const onConflictQueueRef = useRef(null)
+
+  const setOnConflictQueue = useCallback((callback) => {
+    onConflictQueueRef.current = callback
+  }, [])
+
   // ── FIX: beforeunload handler to flush streaming state on page refresh ──
   // This ensures that if the user refreshes while a project is being created,
   // the accumulated tool_calls are persisted to localStorage before the page unloads.
@@ -1266,6 +1273,37 @@ export function useChat() {
       onError: (errMsg) => {
         const isActiveNow = activeSessionRef.current === sessionId
 
+        // ── 409 Conflict: another prompt is already running ──
+        // Remove the optimistic temp messages and auto-queue the message instead.
+        const is409 = typeof errMsg === 'string' && (
+          errMsg.includes('409') || errMsg.includes('CONFLICT') || errMsg.includes('already running')
+        )
+        if (is409 && onConflictQueueRef.current) {
+          console.log('[useChat] 409 Conflict detected for session', sessionId,
+            '— removing temp messages and auto-queuing:', content.substring(0, 60))
+
+          // Remove the optimistic user + assistant temp messages
+          updateMessagesForSession(sessionId, prev =>
+            prev.filter(m =>
+              m.message_id !== userMsgTempId && m.message_id !== assistantMsgId
+            )
+          )
+
+          // Clean up streaming state
+          delete activeStreamingStateRef.current[sessionId]
+          streamingSessionsRef.current.delete(sessionId)
+          isSendingRef.current.delete(sessionId)
+          delete abortControllersRef.current[sessionId]
+
+          if (isActiveNow) {
+            setIsStreaming(false)
+          }
+
+          // Auto-queue the message via the registered callback
+          onConflictQueueRef.current(sessionId, content)
+          return
+        }
+
         // Calculate generation time even on error
         const generationTime = ((Date.now() - streamingStartedAt) / 1000).toFixed(1)
         const finalToolCalls = Object.values(activeToolCalls)
@@ -1405,6 +1443,7 @@ export function useChat() {
     isSessionStreaming,
     setOnBackgroundComplete,
     setOnProjectStatusChange,
+    setOnConflictQueue,
     cleanupSession,
   }
 }

@@ -1,9 +1,12 @@
 /**
- * ExplorerThemeToggle — Compact theme toggle for explorer sidebars/headers
+ * ExplorerThemeToggle — Compact icon-based theme toggle for explorer sidebars/headers
  *
  * A minimal sun/moon icon button that fits naturally alongside
  * other explorer action buttons (New File, Refresh, Collapse, etc.).
- * Uses the same sizing, spacing, and hover effects as neighboring icons.
+ *
+ * Icon behavior (matches current theme state):
+ *   ☀️ Sun  → shown when current theme is Light
+ *   🌙 Moon → shown when current theme is Dark
  *
  * Props:
  *   size       — icon size in px (default: 16)
@@ -11,56 +14,30 @@
  *   className  — additional CSS class
  */
 import { useTheme } from '../../hooks/useTheme.js'
+import { SunIcon, MoonIcon } from '../icons/ThemeIcons.jsx'
 import './ExplorerThemeToggle.css'
 
 export default function ExplorerThemeToggle({ size = 16, btnClass = '', className = '' }) {
-  const { isDark, toggleTheme } = useTheme()
+  const { isDark, setTheme, THEMES } = useTheme()
+
+  const handleToggle = (e) => {
+    e.stopPropagation()
+    setTheme(isDark ? THEMES.LIGHT : THEMES.DARK)
+  }
 
   return (
     <button
       className={`explorer-theme-toggle ${isDark ? 'ett-dark' : 'ett-light'} ${btnClass} ${className}`}
-      onClick={(e) => { e.stopPropagation(); toggleTheme(); }}
-      title={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
-      aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
+      onClick={handleToggle}
+      title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+      aria-label={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
       type="button"
     >
-      {/* Sun icon — shown in dark mode (click to go light) */}
-      <svg
-        className="ett-icon ett-icon-sun"
-        width={size}
-        height={size}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <circle cx="12" cy="12" r="5" />
-        <line x1="12" y1="1" x2="12" y2="3" />
-        <line x1="12" y1="21" x2="12" y2="23" />
-        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-        <line x1="1" y1="12" x2="3" y2="12" />
-        <line x1="21" y1="12" x2="23" y2="12" />
-        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-      </svg>
+      {/* Sun icon — visible in Light mode (represents current state) */}
+      <SunIcon size={size} className="ett-icon ett-icon-sun" />
 
-      {/* Moon icon — shown in light mode (click to go dark) */}
-      <svg
-        className="ett-icon ett-icon-moon"
-        width={size}
-        height={size}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-      </svg>
+      {/* Moon icon — visible in Dark mode (represents current state) */}
+      <MoonIcon size={size} className="ett-icon ett-icon-moon" />
     </button>
   )
 }

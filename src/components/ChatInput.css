@@ -467,6 +467,14 @@
   cursor: text;
 }
 
+/* Textarea in queue mode — clearly usable with a subtle queue hint */
+.ci-textarea--queue-mode {
+  opacity: 1;
+  cursor: text;
+  border-left: 2px solid #6366f1;
+  padding-left: 10px;
+}
+
 
 
 .ci-textarea::-webkit-scrollbar { width: 4px; }
@@ -531,6 +539,26 @@
 .ci-send--generating .ci-spinner {
   border-color: rgba(148, 163, 184, 0.3);
   border-top-color: var(--text-muted);
+}
+
+/* Send button in queue mode — distinct styling to show queued send */
+.ci-send--queue {
+  background: #6366f1 !important;
+  color: #fff !important;
+  opacity: 1 !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+  animation: cqPulse 2s ease-in-out infinite;
+}
+.ci-send--queue:hover {
+  background: #4f46e5 !important;
+  transform: scale(1.05);
+}
+
+@keyframes cqPulse {
+  0%, 100% { box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35); }
+  50%      { box-shadow: 0 2px 14px rgba(99, 102, 241, 0.55); }
 }
 
 

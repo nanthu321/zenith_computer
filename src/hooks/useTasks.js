@@ -228,7 +228,8 @@ export function useTasks() {
       )
     )
     try {
-      await apiFetch(`/api/tasks/${taskId}/cancel`, { method: 'POST' })
+      // Actual backend route: POST /api/task-cancel/{taskId}
+      await apiFetch(`/api/task-cancel/${encodeURIComponent(taskId)}`, { method: 'POST' })
     } catch (err) {
       // Revert optimistic update on failure
       setTasks(prev =>
@@ -242,8 +243,36 @@ export function useTasks() {
     }
   }, [])
 
+  /**
+   * Add a new task via the backend API.
+   * POST /api/tasks
+   *
+   * @param {Object} taskData — Task creation payload
+   * @returns {Promise<Object>} Normalized task object
+   */
+  const addNewTask = useCallback(async (taskData) => {
+    try {
+      const raw = await apiFetch('/api/tasks', {
+        method: 'POST',
+        body: JSON.stringify(taskData),
+      })
+      const normalized = normalizeTask(raw)
+      if (normalized && normalized.task_id) {
+        setTasks(prev => {
+          const exists = prev.some(t => t.task_id === normalized.task_id)
+          if (exists) return prev
+          return [normalized, ...prev]
+        })
+      }
+      return normalized
+    } catch (err) {
+      throw err
+    }
+  }, [])
+
   const downloadTaskFile = useCallback((taskId) => {
-    downloadFile(`/api/tasks/${taskId}/download`)
+    // Actual backend route: GET /api/task-download/{taskId}
+    downloadFile(`/api/task-download/${encodeURIComponent(taskId)}`)
   }, [])
 
   const downloadProject = useCallback((projectId) => {
@@ -320,6 +349,7 @@ export function useTasks() {
     fetchTasks,
     fetchProjects,
     addTask,
+    addNewTask,
     cancelTask,
     downloadTaskFile,
     downloadProject,

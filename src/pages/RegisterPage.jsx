@@ -230,7 +230,7 @@ export default function RegisterPage() {
         <Link to="/" className="auth-back-link">← Back to home</Link>
 
         <div className="auth-theme-toggle">
-          <ThemeToggle showLabel size="sm" />
+          <ThemeToggle size="sm" />
         </div>
       </div>
     </div>

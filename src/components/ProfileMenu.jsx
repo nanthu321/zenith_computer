@@ -445,9 +445,9 @@ export default function ProfileMenu({ user, onLogout }) {
                     <div className="pm-form-group">
                       <label className="pm-form-label">Theme</label>
                       <p className="pm-form-hint" style={{ marginBottom: 8 }}>
-                        Choose your preferred appearance. "System" follows your OS setting.
+                        Toggle between dark and light appearance.
                       </p>
-                      <ThemeToggle variant="pill" size="md" />
+                      <ThemeToggle size="md" />
                     </div>
 
                     <div className="pm-form-group">
@@ -473,7 +473,17 @@ export default function ProfileMenu({ user, onLogout }) {
                             setTimeout(() => setPrefSaved(false), 2000)
                           } catch (err) {
                             console.error('[ProfileMenu] Failed to save preferences:', err.message)
-                            alert('Failed to save preferences. Please try again.')
+                            // Determine if this is a transient server error or an auth issue
+                            const msg = err.message || ''
+                            const isAuthError = /unauthorized|401/i.test(msg)
+                            const isServerError = /^(5\d\d|502|503|Cannot reach|network)/i.test(msg)
+                            if (isAuthError) {
+                              alert('Your session has expired. Please log in again.')
+                            } else if (isServerError) {
+                              alert('The server is temporarily unavailable. Your preferences are saved locally and will sync when the server is back.')
+                            } else {
+                              alert('Failed to save preferences. Please try again.')
+                            }
                           } finally {
                             setPrefSaving(false)
                           }

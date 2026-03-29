@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.js'
 import { useSessions } from '../hooks/useSessions.js'
 import { useChat } from '../hooks/useChat.js'
+import { useChatQueue } from '../hooks/useChatQueue.js'
 import { useTasks } from '../hooks/useTasks.js'
 import { useUnreadSessions } from '../hooks/useNotifications.js'
 import Sidebar from '../components/Sidebar.jsx'
@@ -87,8 +88,16 @@ export default function ChatPage() {
     messages, isStreaming, error: chatError,
     agentEvents, artifacts,
     fetchMessages, sendMessage, cancelStream, setError: setChatError,
-    setActiveSession, isSessionStreaming, setOnBackgroundComplete, setOnProjectStatusChange, cleanupSession
+    setActiveSession, isSessionStreaming, setOnBackgroundComplete, setOnProjectStatusChange,
+    setOnConflictQueue, cleanupSession
   } = useChat()
+
+  const {
+    isQueueing, queueError,
+    addToQueue, getSessionQueue,
+    clearCompleted: clearQueueCompleted, cleanupQueue, setActiveQueueSession,
+    setQueueError,
+  } = useChatQueue()
 
   const { toast, ToastPortal } = useToast()
 
@@ -148,6 +157,41 @@ export default function ChatPage() {
       )
     })
   }, [setOnBackgroundComplete, toast, addUnreadSession, markSessionAsRead])
+
+  // Register 409 Conflict auto-queue callback
+  // When /send returns 409 (another prompt already running), useChat will
+  // call this callback to automatically queue the message instead.
+  useEffect(() => {
+    setOnConflictQueue((sessionId, message) => {
+      console.log('[ChatPage] 409 auto-queue: session', sessionId, '| message:', message.substring(0, 60))
+
+      addToQueue(sessionId, message)
+        .then((item) => {
+          if (item) {
+            toast(
+              `Message auto-queued (#${item.queuePosition}) — another prompt is still running`,
+              {
+                title: 'Auto-Queued',
+                type: 'info',
+                duration: 5000,
+              }
+            )
+          }
+        })
+        .catch((err) => {
+          console.error('[ChatPage] 409 auto-queue failed:', err)
+          // If the backend doesn't support the /queue endpoint, show a
+          // friendlier message instead of the raw backend error.
+          const isUnsupported = (err.message || '').toLowerCase().includes('invalid chat endpoint')
+          toast.error(
+            isUnsupported
+              ? 'Please wait for the current response to finish before sending another message.'
+              : 'Could not queue message: ' + (err.message || 'Unknown error'),
+            { duration: 5000 }
+          )
+        })
+    })
+  }, [setOnConflictQueue, addToQueue, toast])
 
   // ── Initial load: Fetch sessions, validate restored active session ──
   useEffect(() => {
@@ -242,6 +286,27 @@ export default function ChatPage() {
       console.warn('[ChatPage] fetchMessages failed for', sid, ':', err.message, '— will retry on next switch')
     })
   }, [activeSessionId, setActiveSession, fetchMessages, isSessionStreaming])
+
+  // ── Sync queue session tracking when activeSessionId changes ──
+  useEffect(() => {
+    setActiveQueueSession(activeSessionId || null)
+  }, [activeSessionId, setActiveQueueSession])
+
+  // ── Show toast on queue errors ──
+  useEffect(() => {
+    if (queueError) {
+      // If the backend doesn't support the /queue endpoint, show a
+      // friendlier message instead of the raw backend error.
+      const isUnsupported = (queueError || '').toLowerCase().includes('invalid chat endpoint')
+      toast.error(
+        isUnsupported
+          ? 'Message queuing is not available. Please wait for the current response to finish.'
+          : queueError,
+        { duration: 5000 }
+      )
+      setQueueError(null)
+    }
+  }, [queueError, toast, setQueueError])
 
   useEffect(() => {
     if (sidebarTab === SIDEBAR_TABS.TASKS)    fetchTasks()
@@ -342,6 +407,7 @@ export default function ChatPage() {
 
   const handleDeleteSession = useCallback(async (sessionId) => {
     cleanupSession(sessionId)
+    cleanupQueue(sessionId)
     fetchedSessionsRef.current.delete(sessionId)
     await deleteSession(sessionId)
     if (String(activeSessionId) === String(sessionId)) {
@@ -419,6 +485,70 @@ export default function ChatPage() {
       updateSessionTitle(activeSessionId, title)
     }, images)
   }, [activeSessionId, sendMessage, createSession, updateSessionTitle, touchSession])
+
+  // ── Queue a follow-up message while current prompt is streaming ──
+  const handleQueueMessage = useCallback((content) => {
+    if (!activeSessionId) {
+      toast.error('No active session to queue a message in.', { duration: 3000 })
+      return
+    }
+
+    if (!content?.trim()) return
+
+    addToQueue(activeSessionId, content)
+      .then((item) => {
+        if (item) {
+          toast(
+            `Message queued (#${item.queuePosition})`,
+            {
+              title: 'Queued',
+              type: 'info',
+              duration: 3000,
+            }
+          )
+        }
+      })
+      .catch((err) => {
+        console.error('[ChatPage] Failed to queue message:', err)
+        // If the backend doesn't support the /queue endpoint, show a
+        // friendlier message instead of the raw backend error.
+        const isUnsupported = (err.message || '').toLowerCase().includes('invalid chat endpoint')
+        toast.error(
+          isUnsupported
+            ? 'Please wait for the current response to finish before sending another message.'
+            : (err.message || 'Failed to queue message. Try again.'),
+          { duration: 5000 }
+        )
+      })
+  }, [activeSessionId, addToQueue, toast])
+
+  // ── Clear completed queue items ──
+  const handleClearQueueCompleted = useCallback(() => {
+    if (activeSessionId) {
+      clearQueueCompleted(activeSessionId)
+    }
+  }, [activeSessionId, clearQueueCompleted])
+
+  // ── Refresh messages when a queued item completes ──
+  const prevQueueItemsRef = useRef([])
+  useEffect(() => {
+    if (!activeSessionId) return
+    const currentQueue = getSessionQueue(activeSessionId)
+    const prevQueue = prevQueueItemsRef.current
+
+    // Check if any item just transitioned to 'completed'
+    const newlyCompleted = currentQueue.filter(item =>
+      item.status === 'completed' &&
+      !prevQueue.some(prev => prev.id === item.id && prev.status === 'completed')
+    )
+
+    if (newlyCompleted.length > 0 && !isSessionStreaming(activeSessionId)) {
+      console.log('[ChatPage] Queue item(s) completed — refreshing messages:', newlyCompleted.length)
+      fetchMessages(activeSessionId)
+    }
+
+    prevQueueItemsRef.current = currentQueue
+  }, [activeSessionId, getSessionQueue, fetchMessages, isSessionStreaming])
 
   const handleCancelStream = useCallback(() => {
     if (activeSessionId) {
@@ -514,11 +644,15 @@ export default function ChatPage() {
           agentEvents={agentEvents}
           artifacts={artifacts}
           onSendMessage={handleSendMessage}
+          onQueueMessage={handleQueueMessage}
           onCancelStream={handleCancelStream}
           onClearError={() => setChatError(null)}
           user={user}
           tasksByMessage={tasksByMessage}
           onViewTasks={handleViewTasks}
+          queueItems={activeSessionId ? getSessionQueue(activeSessionId) : []}
+          isQueueing={isQueueing}
+          onClearQueueCompleted={handleClearQueueCompleted}
         />
       </main>
 

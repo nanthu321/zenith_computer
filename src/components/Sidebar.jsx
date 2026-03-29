@@ -394,16 +394,9 @@ export default function Sidebar({
 
       {/* ── Footer: Theme Toggle + Profile Menu ── */}
       <div className="sidebar-footer">
-        {!collapsed && (
-          <div className="sidebar-footer-row">
-            <ThemeToggle variant="pill" size="sm" />
-          </div>
-        )}
-        {collapsed && (
-          <div className="sidebar-footer-row sidebar-footer-center">
-            <ThemeToggle variant="toggle" size="sm" />
-          </div>
-        )}
+        <div className={`sidebar-footer-row ${collapsed ? 'sidebar-footer-center' : ''}`}>
+          <ThemeToggle size="sm" />
+        </div>
 
         {/* Profile Menu — replaces old logout row */}
         {user && (

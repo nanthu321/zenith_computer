@@ -59,8 +59,10 @@ export default function TaskList({ selectedTaskId, onSelect, refreshSignal, live
 
   const load = useCallback(async () => {
     try {
-      const data = await tasksApi.listTasks();
-      setTasks(data.tasks || []);
+      const raw = await tasksApi.listTasks();
+      // Handle all possible API shapes: array, { tasks: [] }, { data: [] }
+      const list = Array.isArray(raw) ? raw : (raw?.tasks ?? raw?.data ?? []);
+      setTasks(Array.isArray(list) ? list : []);
       setError(null);
     } catch (e) {
       setError(e.message);

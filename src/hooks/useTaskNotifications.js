@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { getCookie } from "../utils/cookieUtils.js";
+import { tasksApi } from "../api/tasks.js";
 
 /**
  * useTaskNotifications (optimized)
@@ -69,7 +70,7 @@ export default function useTaskNotifications({
     const token = getCookie("zenith_token") || localStorage.getItem("token");
     // EventSource doesn't support custom headers natively —
     // pass token as a query param (backend must accept it)
-    const url = `/api/tasks/notifications?token=${encodeURIComponent(token || "")}`;
+    const url = tasksApi.getNotificationsUrl(token);
 
     const connId = ++connectionCount.current;
     console.log(`[TaskSSE] Connection #${connId} opening (retry: ${retryCount.current}/${SSE_MAX_RETRY_ATTEMPTS})`);
