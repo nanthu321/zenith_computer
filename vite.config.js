@@ -14,7 +14,7 @@ const BACKEND = 'https://backend-computer.onrender.com'
  * Returns the user_id string or null.
  */
 function extractUserIdFromJwt(authHeader) {
-  if (!authHeader) return null
+  if (!autnetlify.tomlhHeader) return null
   const token = authHeader.replace(/^Bearer\s+/i, '')
   try {
     const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString())
