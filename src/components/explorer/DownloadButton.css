@@ -1,0 +1,144 @@
+/* ════════════════════════════════════════════════════════════
+   DownloadButton — Consistent download icon styles
+   Zenith: #E42527 · #0A9949 · #226DB4 · #F9B21C
+   ════════════════════════════════════════════════════════════ */
+
+@keyframes dl-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes dl-bounce {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+@keyframes dl-check-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* ── Base Button ── */
+.dl-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: 5px;
+  color: #4a6d88;
+  transition: all 0.15s ease;
+  padding: 0;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.dl-btn:hover {
+  background: rgba(34, 109, 180, 0.15);
+  color: #226DB4;
+  transform: scale(1.05);
+}
+
+.dl-btn:active {
+  transform: scale(0.95);
+}
+
+[data-theme="light"] .dl-btn {
+  color: var(--text-muted);
+}
+
+[data-theme="light"] .dl-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* ── Loading State ── */
+.dl-btn-loading {
+  color: #F9B21C !important;
+  cursor: wait;
+  pointer-events: none;
+}
+
+.dl-btn-loading:hover {
+  background: transparent;
+  transform: none;
+}
+
+/* ── Success State ── */
+.dl-btn-success {
+  color: #0A9949 !important;
+  animation: dl-check-pop 0.3s ease;
+}
+
+.dl-btn-success:hover {
+  background: rgba(10, 153, 73, 0.12);
+  color: #0A9949;
+}
+
+/* ── Error State ── */
+.dl-btn-error {
+  color: #E42527 !important;
+  animation: dl-bounce 0.3s ease;
+}
+
+.dl-btn-error:hover {
+  background: rgba(228, 37, 39, 0.12);
+  color: #E42527;
+}
+
+/* ── Size variants for different contexts ── */
+
+/* Project-level download (slightly larger) */
+.dl-btn-project {
+  width: 26px;
+  height: 26px;
+}
+
+/* Explorer panel project header */
+.dl-btn-explorer {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: #5a8aac;
+}
+
+.dl-btn-explorer:hover {
+  background: rgba(34, 109, 180, 0.15);
+  color: #F9B21C;
+  transform: scale(1.05);
+}
+
+[data-theme="light"] .dl-btn-explorer {
+  color: var(--text-tertiary);
+}
+
+[data-theme="light"] .dl-btn-explorer:hover {
+  color: var(--text-primary);
+}
+
+/* Filetree node download (compact) */
+.dl-btn-tree {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+}
+
+/* Section header download */
+.dl-btn-section {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  color: #5a8aac;
+}
+
+.dl-btn-section:hover {
+  background: rgba(34, 109, 180, 0.15);
+  color: #226DB4;
+}
+
+[data-theme="light"] .dl-btn-section {
+  color: var(--text-muted);
+}

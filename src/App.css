@@ -1,0 +1,326 @@
+/* ============================================================
+   Zenith — Global Styles & Design System
+   Professional Dark Theme with Purple Accent
+   ============================================================ */
+
+/* ── Google Fonts ── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ── CSS Reset & Root Variables ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ════════════════════════════════════════════════
+   DARK THEME (default)
+   ════════════════════════════════════════════════ */
+:root,
+[data-theme="dark"] {
+  --theme-name: "dark";
+
+  /* Core Palette */
+  --bg-base:        #0a0a0f;
+  --bg-surface:     #0f0f18;
+  --bg-elevated:    #14141f;
+  --bg-overlay:     #1a1a2e;
+  --bg-hover:       #1e1e30;
+  --bg-active:      #22223a;
+  --bg-card:        #13131d;
+
+  /* Brand — Zenith Multi-Color System
+     🔵 Blue #226DB4  — Primary (navigation, bot, links)
+     🔴 Red  #E42527  — CTA (buttons, urgency)
+     🟢 Green #0A9949 — Success (active, confirmations)
+     🟡 Gold #F9B21C  — Warm accent (highlights, user) */
+  --brand-primary:    #226DB4;
+  --brand-secondary:  #5a9fd4;
+  --brand-tertiary:   #8bbde8;
+  --brand-dim:        #226DB415;
+  --brand-glow:       #226DB430;
+  --brand-glow-lg:    0 0 40px #226DB420, 0 0 80px #226DB410;
+
+  --brand-red:        #E42527;
+  --brand-green:      #0A9949;
+  --brand-blue:       #226DB4;
+  --brand-gold:       #F9B21C;
+
+  /* Accent Colors */
+  --accent-blue:    #226DB4;
+  --accent-cyan:    #06b6d4;
+  --accent-green:   #0A9949;
+  --accent-yellow:  #F9B21C;
+  --accent-red:     #E42527;
+  --accent-orange:  #f97316;
+
+  /* Text */
+  --text-primary:   #f0f0fa;
+  --text-secondary: #a8b8cc;
+  --text-tertiary:  #6b7d94;
+  --text-muted:     #3f5060;
+  --text-inverse:   #0a0a0f;
+
+  /* Borders */
+  --border-subtle:  #1a2535;
+  --border-default: #253545;
+  --border-strong:  #35506a;
+  --border-brand:   #226DB440;
+
+  /* Shadows */
+  --shadow-sm:   0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md:   0 4px 16px rgba(0,0,0,0.5);
+  --shadow-lg:   0 8px 32px rgba(0,0,0,0.6);
+  --shadow-xl:   0 16px 64px rgba(0,0,0,0.7);
+  --shadow-brand: 0 4px 24px rgba(34,109,180,0.25);
+}
+
+/* ════════════════════════════════════════════════
+   LIGHT THEME
+   ════════════════════════════════════════════════ */
+[data-theme="light"] {
+  --theme-name: "light";
+
+  /* Core Palette */
+  --bg-base:        #f8f8fc;
+  --bg-surface:     #ffffff;
+  --bg-elevated:    #f3f5ff;
+  --bg-overlay:     #e7edff;
+  --bg-hover:       #ede9fd;
+  --bg-active:      #c4d8ff;
+  --bg-card:        #ffffff;
+
+  /* Brand — Zenith Multi-Color (light) */
+  --brand-primary:    #226DB4;
+  --brand-secondary:  #1a5a96;
+  --brand-tertiary:   #144a7c;
+  --brand-dim:        #226DB412;
+  --brand-glow:       #226DB425;
+  --brand-glow-lg:    0 0 40px #226DB418, 0 0 80px #226DB40a;
+
+  --brand-red:        #E42527;
+  --brand-green:      #0A9949;
+  --brand-blue:       #226DB4;
+  --brand-gold:       #F9B21C;
+
+  /* Accent Colors */
+  --accent-blue:    #226DB4;
+  --accent-cyan:    #0891b2;
+  --accent-green:   #0A9949;
+  --accent-yellow:  #d4960a;
+  --accent-red:     #c92022;
+  --accent-orange:  #ea580c;
+
+  /* Text */
+  --text-primary:   #0c1620;
+  --text-secondary: #2e4458;
+  --text-tertiary:  #567890;
+  --text-muted:     #8aa0b4;
+  --text-inverse:   #ffffff;
+
+  /* Borders */
+  --border-subtle:  #e0e8f0;
+  --border-default: #c8d8e8;
+  --border-strong:  #a0b8cc;
+  --border-brand:   #226DB430;
+
+  /* Shadows */
+  --shadow-sm:   0 1px 3px rgba(100,90,200,0.08);
+  --shadow-md:   0 4px 16px rgba(100,90,200,0.12);
+  --shadow-lg:   0 8px 32px rgba(100,90,200,0.14);
+  --shadow-xl:   0 16px 64px rgba(100,90,200,0.16);
+  --shadow-brand: 0 4px 24px rgba(34,109,180,0.20);
+}
+
+/* ════════════════════════════════════════════════
+   SHARED TOKENS (same in both themes)
+   ════════════════════════════════════════════════ */
+:root {
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+
+  /* Spacing */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Radius */
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   16px;
+  --radius-xl:   20px;
+  --radius-full: 9999px;
+
+  /* Transitions */
+  --transition-fast:   all 0.12s ease;
+  --transition-normal: all 0.2s ease;
+  --transition-slow:   all 0.35s ease;
+
+  /* Sidebar */
+  --sidebar-width: 280px;
+}
+
+/* ── Base ── */
+html {
+  font-size: 16.5px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  line-height: 1.6;
+  min-height: 100vh;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Selection ── */
+::selection {
+  background: var(--brand-glow);
+  color: var(--brand-tertiary);
+}
+
+/* ── Utility Classes ── */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0,0,0,0); white-space: nowrap; border-width: 0;
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Global Animations ── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pulse-dot {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40%           { transform: scale(1.0); opacity: 1; }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes gradientShift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(34,109,180,0.3); }
+  50%       { box-shadow: 0 0 40px rgba(34,109,180,0.6); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-10px); }
+}
+
+@keyframes blink {
+  0%, 100% { scale: 1;opacity: 1; }
+  50%       { scale: 0.9;opacity: 0.7; }
+}
+
+/* ── Global Focus Styles ── */
+:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Kill focus outlines inside chat input — prevents double-border */
+.chat-input-form :focus-visible,
+.chat-input-form *:focus-visible,
+.chat-input-form *:focus {
+  outline: none !important;
+  outline-width: 0 !important;
+  box-shadow: none !important;
+}
+
+/* ── Code blocks ── */
+code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--bg-overlay);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  color: var(--brand-tertiary);
+}
+
+pre {
+  font-family: var(--font-mono);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  overflow-x: auto;
+  line-height: 1.5;
+  font-size: 0.875rem;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  color: var(--text-primary);
+}
+
+/* ── Links ── */
+a {
+  color: var(--brand-secondary);
+  text-decoration: none;
+  transition: var(--transition-fast);
+}
+a:hover { color: var(--brand-tertiary); }

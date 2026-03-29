@@ -1,0 +1,305 @@
+/* ════════════════════════════════════════════════════════════
+   Project Status Indicators — Chat History + Explorer
+   Minimal, non-intrusive, real-time status badges.
+   ════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════
+   1. CHAT INLINE INDICATORS
+   Attached to relevant chat messages.
+   ═══════════════════════════════════════════════ */
+
+.project-status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px 5px 10px;
+  border-radius: 8px;
+  font-size: 0.76rem;
+  font-weight: 550;
+  width: fit-content;
+  max-width: 100%;
+  animation: psi-enter 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: all 0.3s ease;
+  margin-top: 6px;
+  user-select: none;
+  overflow: hidden;
+  position: relative;
+}
+
+@keyframes psi-enter {
+  from { opacity: 0; transform: translateY(4px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);    }
+}
+
+/* ── Creating status ── */
+.project-status-indicator--creating {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.10), rgba(139, 92, 246, 0.07));
+  border: 1px solid rgba(99, 102, 241, 0.28);
+  color: var(--text-secondary);
+}
+
+.project-status-indicator--creating::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(99, 102, 241, 0.08) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: psi-shimmer 2s linear infinite;
+}
+
+/* ── Generating status ── */
+.project-status-indicator--generating {
+  background: linear-gradient(135deg, rgba(249, 178, 28, 0.10), rgba(34, 109, 180, 0.08));
+  border: 1px solid rgba(249, 178, 28, 0.30);
+  color: var(--text-secondary);
+}
+
+.project-status-indicator--generating::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(249, 178, 28, 0.10) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: psi-shimmer 1.8s linear infinite;
+}
+
+/* ── Completed status ── */
+.project-status-indicator--completed {
+  background: linear-gradient(135deg, rgba(10, 153, 73, 0.10), rgba(10, 153, 73, 0.05));
+  border: 1px solid rgba(10, 153, 73, 0.30);
+  color: var(--text-secondary);
+}
+
+@keyframes psi-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Icon within the indicator ── */
+.psi-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+/* Spinner for creating/generating */
+.psi-spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(99, 102, 241, 0.20);
+  border-top-color: #6366f1;
+  border-right-color: #8b5cf6;
+  animation: psi-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+.project-status-indicator--generating .psi-spinner {
+  border-color: rgba(249, 178, 28, 0.20);
+  border-top-color: #F9B21C;
+  border-right-color: #e6a417;
+}
+
+@keyframes psi-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Success checkmark for completed */
+.psi-check {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #0A9949;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  animation: psi-check-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes psi-check-pop {
+  from { transform: scale(0); }
+  to   { transform: scale(1); }
+}
+
+.psi-check svg {
+  width: 8px;
+  height: 8px;
+}
+
+/* Label text */
+.psi-label {
+  position: relative;
+  z-index: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Project name in the label */
+.psi-project-name {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  margin-left: 2px;
+}
+
+/* ═══════════════════════════════════════════════
+   2. EXPLORER / PROJECTS PANEL INDICATORS
+   Small dots next to project names.
+   ═══════════════════════════════════════════════ */
+
+/* ── Green blinking dot — currently generating ── */
+.project-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+
+.project-dot--generating {
+  background: #0A9949;
+  box-shadow: 0 0 6px rgba(10, 153, 73, 0.4);
+  animation: project-dot-blink 1.4s ease-in-out infinite;
+}
+
+@keyframes project-dot-blink {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.35; transform: scale(0.7); }
+}
+
+/* ── Red dot — completed but not yet viewed ── */
+.project-dot--completed {
+  background: #E42527;
+  box-shadow: 0 0 4px rgba(228, 37, 39, 0.3);
+  animation: project-dot-enter 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes project-dot-enter {
+  from { transform: scale(0); }
+  to   { transform: scale(1); }
+}
+
+/* ── Creating dot — blue pulse ── */
+.project-dot--creating {
+  background: #226DB4;
+  box-shadow: 0 0 6px rgba(34, 109, 180, 0.4);
+  animation: project-dot-blink 1.4s ease-in-out infinite;
+}
+
+/* ═══════════════════════════════════════════════
+   3. SIDEBAR PROJECT NAV BADGE
+   Badge on the "Projects" nav button.
+   ═══════════════════════════════════════════════ */
+
+.projects-nav-badge {
+  background: #0A9949;
+  color: white;
+  font-size: 0.58rem;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  margin-left: auto;
+  animation: psi-enter 0.25s ease;
+}
+
+.projects-nav-badge--alert {
+  background: #E42527;
+}
+
+/* ═══════════════════════════════════════════════
+   4. EXPLORER SECTION HEADER STATUS DOT
+   Appears next to section title in WorkspaceExplorer.
+   ═══════════════════════════════════════════════ */
+
+.vsc-section-status-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  min-width: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-left: 6px;
+}
+
+.vsc-section-status-dot--generating {
+  background: #0A9949;
+  box-shadow: 0 0 6px rgba(10, 153, 73, 0.4);
+  animation: project-dot-blink 1.4s ease-in-out infinite;
+}
+
+.vsc-section-status-dot--completed {
+  background: #E42527;
+  box-shadow: 0 0 4px rgba(228, 37, 39, 0.3);
+  animation: project-dot-enter 0.3s ease;
+}
+
+.vsc-section-status-dot--creating {
+  background: #226DB4;
+  box-shadow: 0 0 6px rgba(34, 109, 180, 0.4);
+  animation: project-dot-blink 1.4s ease-in-out infinite;
+}
+
+/* ═══════════════════════════════════════════════
+   5. PROJECTS PANEL ITEM STATUS
+   Status dot inside the sidebar ProjectsPanel items.
+   ═══════════════════════════════════════════════ */
+
+.project-item-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+  padding-left: 6px;
+}
+
+.project-item-status-label {
+  font-size: 0.64rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.project-item-status-label--generating {
+  color: #0A9949;
+}
+
+.project-item-status-label--creating {
+  color: #226DB4;
+}
+
+.project-item-status-label--completed {
+  color: #E42527;
+}
+
+/* ═══════════════════════════════════════════════
+   LIGHT THEME OVERRIDES
+   ═══════════════════════════════════════════════ */
+
+[data-theme="light"] .project-status-indicator--creating {
+  background: rgba(99, 102, 241, 0.06);
+  border-color: rgba(99, 102, 241, 0.20);
+}
+
+[data-theme="light"] .project-status-indicator--generating {
+  background: rgba(249, 178, 28, 0.06);
+  border-color: rgba(249, 178, 28, 0.22);
+}
+
+[data-theme="light"] .project-status-indicator--completed {
+  background: rgba(10, 153, 73, 0.06);
+  border-color: rgba(10, 153, 73, 0.22);
+}

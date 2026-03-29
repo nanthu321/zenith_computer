@@ -1,0 +1,384 @@
+/* ════════════════════════════════════════════════════════════════
+   FileViewer — Monaco Code Editor Component Styles
+   Zenith Brand: #E42527 · #0A9949 · #226DB4 · #F9B21C
+   
+   This file defines ALL styles for FileViewer.jsx including:
+   - Container & Monaco wrapper layout
+   - File header bar (tab, breadcrumb, save button)
+   - Empty / Loading / Error states
+   - Save error notification
+   ════════════════════════════════════════════════════════════════ */
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes fv-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fv-pulse-glow {
+  0%, 100% { box-shadow: 0 0 12px rgba(10, 153, 73, 0.15); }
+  50%      { box-shadow: 0 0 24px rgba(10, 153, 73, 0.30); }
+}
+
+
+/* ═══════════════════════════════════════════════
+   MAIN CONTAINER — Must fill entire editor panel
+   ═══════════════════════════════════════════════ */
+.fileviewer-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: #080c14;
+}
+[data-theme="light"] .fileviewer-container {
+  background: var(--bg-base);
+}
+
+
+/* ═══════════════════════════════════════════════
+   MONACO WRAPPER — Must stretch to fill remaining space
+   ═══════════════════════════════════════════════ */
+.fileviewer-monaco-wrapper {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Ensure Monaco's internal container fills the wrapper */
+.fileviewer-monaco-wrapper > section,
+.fileviewer-monaco-wrapper > div {
+  height: 100% !important;
+  width: 100% !important;
+}
+
+/* Monaco loading placeholder */
+.fileviewer-monaco-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 8px;
+  color: #4a6d88;
+  font-size: 12px;
+  animation: fv-fade-in 0.3s ease;
+}
+.fileviewer-monaco-loading span {
+  color: #3a5570;
+}
+
+
+/* ═══════════════════════════════════════════════
+   FILE HEADER BAR (own tab + save bar)
+   Hidden inside WorkspaceExplorer (has its own tabs),
+   but visible when FileViewer is used standalone.
+   ═══════════════════════════════════════════════ */
+.fileviewer-header {
+  display: flex;
+  align-items: center;
+  height: 42px;
+  min-height: 42px;
+  padding: 0 12px 0 0;
+  flex-shrink: 0;
+  background: #0a1018;
+  border-bottom: 1px solid rgba(34, 109, 180, 0.08);
+  gap: 0;
+  overflow: hidden;
+}
+[data-theme="light"] .fileviewer-header {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Tab in header */
+.fileviewer-tab {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 16px;
+  gap: 6px;
+  font-size: 13px;
+  color: #c8d8e8;
+  white-space: nowrap;
+  border-right: 1px solid rgba(34, 109, 180, 0.06);
+  position: relative;
+}
+[data-theme="light"] .fileviewer-tab {
+  color: var(--text-primary);
+}
+
+/* Active top line */
+.fileviewer-tab::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #E42527, #F9B21C 35%, #0A9949 65%, #226DB4);
+}
+
+.fileviewer-tab-name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fileviewer-dirty-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #F9B21C;
+  flex-shrink: 0;
+  margin-left: 4px;
+  animation: fv-pulse-glow 2s ease infinite;
+  box-shadow: 0 0 8px rgba(249, 178, 28, 0.3);
+}
+
+/* Filepath breadcrumb in header */
+.fileviewer-filepath-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  padding: 0 16px;
+  font-size: 12px;
+  color: #3a5570;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-theme="light"] .fileviewer-filepath-breadcrumb {
+  color: var(--text-tertiary);
+}
+
+/* Header right section */
+.fileviewer-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Language badge */
+.fileviewer-lang-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 4px;
+  background: rgba(34, 109, 180, 0.10);
+  color: #5a8aac;
+  white-space: nowrap;
+}
+[data-theme="light"] .fileviewer-lang-badge {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+/* Unsaved badge */
+.fileviewer-unsaved-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  background: rgba(249, 178, 28, 0.10);
+  color: #F9B21C;
+  white-space: nowrap;
+}
+
+/* Save button */
+.fileviewer-save-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  border: 1px solid rgba(10, 153, 73, 0.35);
+  border-radius: 6px;
+  background: rgba(10, 153, 73, 0.12);
+  color: #0A9949;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  gap: 0;
+}
+.fileviewer-save-btn:hover {
+  background: rgba(10, 153, 73, 0.22);
+  border-color: rgba(10, 153, 73, 0.50);
+  box-shadow: 0 2px 12px rgba(10, 153, 73, 0.15);
+  transform: translateY(-1px);
+}
+.fileviewer-save-btn:active {
+  transform: translateY(0);
+}
+
+.fileviewer-save-btn-disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
+[data-theme="light"] .fileviewer-save-btn {
+  background: rgba(10, 153, 73, 0.06);
+  border-color: rgba(10, 153, 73, 0.25);
+  color: #0A9949;
+}
+[data-theme="light"] .fileviewer-save-btn:hover {
+  background: rgba(10, 153, 73, 0.12);
+}
+
+
+/* ═══════════════════════════════════════════════
+   SAVE ERROR NOTIFICATION
+   ═══════════════════════════════════════════════ */
+.fileviewer-save-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  margin: 0;
+  font-size: 12px;
+  color: #E42527;
+  background: rgba(228, 37, 39, 0.06);
+  border-bottom: 1px solid rgba(228, 37, 39, 0.12);
+  cursor: pointer;
+  flex-shrink: 0;
+  animation: fv-fade-in 0.2s ease;
+}
+.fileviewer-save-error:hover {
+  background: rgba(228, 37, 39, 0.10);
+}
+.fileviewer-save-error span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fileviewer-save-error-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+  color: #E42527;
+  opacity: 0.6;
+  transition: all 0.12s ease;
+  padding: 0;
+  flex-shrink: 0;
+}
+.fileviewer-save-error-close:hover {
+  opacity: 1;
+  background: rgba(228, 37, 39, 0.12);
+}
+
+
+/* ═══════════════════════════════════════════════
+   EMPTY STATE — "Select a file to view"
+   ═══════════════════════════════════════════════ */
+.fileviewer-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 32px;
+  gap: 14px;
+  user-select: none;
+  animation: fv-fade-in 0.4s ease;
+  text-align: center;
+  min-height: 0;
+  background: #080c14;
+}
+[data-theme="light"] .fileviewer-empty {
+  background: var(--bg-base);
+}
+
+.fileviewer-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  background: rgba(34, 109, 180, 0.06);
+  border: 1px solid rgba(34, 109, 180, 0.08);
+  margin-bottom: 8px;
+  color: #3a5570;
+}
+[data-theme="light"] .fileviewer-empty-icon {
+  background: var(--bg-hover);
+  border-color: var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.fileviewer-empty p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #5a8aac;
+  line-height: 1.4;
+}
+[data-theme="light"] .fileviewer-empty p {
+  color: var(--text-secondary);
+}
+
+.fileviewer-empty span {
+  color: #3a5570;
+  line-height: 1.5;
+}
+[data-theme="light"] .fileviewer-empty span {
+  color: var(--text-tertiary);
+}
+
+/* ═══════════════════════════════════════════════
+   RETRY BUTTON — on error states
+   ═══════════════════════════════════════════════ */
+.fileviewer-retry-btn {
+  padding: 8px 24px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  border: 1px solid rgba(34, 109, 180, 0.25);
+  border-radius: 6px;
+  background: rgba(34, 109, 180, 0.08);
+  color: #7aa3c5;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 6px;
+}
+.fileviewer-retry-btn:hover {
+  background: rgba(34, 109, 180, 0.18);
+  border-color: rgba(34, 109, 180, 0.45);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(34, 109, 180, 0.12);
+  transform: translateY(-1px);
+}
+[data-theme="light"] .fileviewer-retry-btn {
+  background: var(--bg-surface);
+  border-color: var(--border-default);
+  color: var(--text-secondary);
+}
+[data-theme="light"] .fileviewer-retry-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}

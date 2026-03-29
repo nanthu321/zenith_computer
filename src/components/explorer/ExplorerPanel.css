@@ -1,0 +1,253 @@
+/* ============================================================
+   Explorer Panel — Sidebar file tree (redesigned)
+   Zenith: #E42527 · #0A9949 · #226DB4 · #F9B21C
+   ============================================================ */
+
+@keyframes ep-spin {
+  to { transform: rotate(360deg); }
+}
+
+.ep-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  user-select: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI",
+               "Ubuntu", "Droid Sans", sans-serif;
+  font-size: 13px;
+}
+
+.ep-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px 0 20px;
+  height: 50px;
+  min-height: 50px;
+  flex-shrink: 0;
+  background: linear-gradient(180deg, rgba(34, 109, 180, 0.06) 0%, transparent 100%);
+  border-bottom: 1px solid rgba(34, 109, 180, 0.08);
+}
+
+.ep-header-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #5a8aac;
+}
+[data-theme="light"] .ep-header-title { color: var(--text-tertiary); }
+
+.ep-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.ep-panel:hover .ep-header-actions { opacity: 1; }
+
+.ep-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: 6px;
+  color: #5a8aac;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+.ep-action-btn:hover {
+  background: rgba(34, 109, 180, 0.15);
+  color: #F9B21C;
+  transform: scale(1.05);
+}
+[data-theme="light"] .ep-action-btn { color: var(--text-tertiary); }
+[data-theme="light"] .ep-action-btn:hover { color: var(--text-primary); }
+
+.ep-tree-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 0;
+}
+.ep-tree-body::-webkit-scrollbar { width: 8px; }
+.ep-tree-body::-webkit-scrollbar-thumb { background: transparent; min-height: 40px; border-radius: 4px; }
+.ep-tree-body:hover::-webkit-scrollbar-thumb { background: rgba(100, 140, 180, 0.18); }
+.ep-tree-body::-webkit-scrollbar-thumb:hover { background: rgba(100, 140, 180, 0.32); }
+.ep-tree-body::-webkit-scrollbar-track { background: transparent; }
+
+.ep-project-group { margin-bottom: 1px; }
+
+.ep-project-header {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px 0 0;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #0c1520;
+  border-top: 1px solid rgba(34, 109, 180, 0.05);
+}
+[data-theme="light"] .ep-project-header {
+  background: var(--bg-surface);
+  border-top-color: var(--border-subtle);
+}
+.ep-project-group:first-child .ep-project-header { border-top: none; }
+.ep-project-header:hover { background: #0f1d2e; }
+[data-theme="light"] .ep-project-header:hover { background: var(--bg-hover); }
+
+.ep-project-name {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #b0c8dc;
+}
+[data-theme="light"] .ep-project-name { color: var(--text-primary); }
+
+.ep-project-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.1s;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.ep-project-header:hover .ep-project-actions { opacity: 1; }
+
+.ep-node {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding-right: 12px;
+  cursor: pointer;
+  transition: all 0.08s ease;
+  white-space: nowrap;
+  position: relative;
+}
+.ep-node:hover { background: rgba(34, 109, 180, 0.07); }
+[data-theme="light"] .ep-node:hover { background: var(--bg-hover); }
+
+.ep-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: #3a5570;
+  transition: color 0.1s;
+}
+.ep-node:hover .ep-chevron { color: #F9B21C; }
+[data-theme="light"] .ep-chevron { color: var(--text-tertiary); }
+.ep-chevron-hidden { visibility: hidden; }
+
+.ep-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-right: 7px;
+}
+.ep-icon svg { width: 16px; height: 16px; }
+
+.ep-name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 26px;
+  color: #a8c0d4;
+  flex: 1;
+  min-width: 0;
+}
+[data-theme="light"] .ep-name { color: var(--text-primary); }
+
+/* ── Node-level download/actions (show on hover) ── */
+.ep-node-actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+  margin-left: auto;
+  padding-left: 6px;
+}
+.ep-node:hover .ep-node-actions { opacity: 1; }
+
+.ep-children { position: relative; }
+.ep-children::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(34, 109, 180, 0.10);
+}
+[data-theme="light"] .ep-children::before { background: var(--border-subtle); }
+
+.ep-empty-dir {
+  font-size: 12px;
+  color: #2e4558;
+  height: 26px;
+  line-height: 26px;
+  font-style: italic;
+  padding-left: 8px;
+}
+
+.ep-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 24px;
+  gap: 12px;
+  color: #4a6d88;
+  font-size: 13px;
+}
+
+.ep-retry-btn {
+  padding: 8px 22px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid rgba(34, 109, 180, 0.20);
+  border-radius: 6px;
+  background: rgba(34, 109, 180, 0.06);
+  color: #7aa3c5;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  margin-top: 8px;
+}
+[data-theme="light"] .ep-retry-btn {
+  background: var(--bg-surface);
+  border-color: var(--border-default);
+  color: var(--text-secondary);
+}
+.ep-retry-btn:hover {
+  background: rgba(34, 109, 180, 0.15);
+  color: #fff;
+  border-color: rgba(34, 109, 180, 0.40);
+  transform: translateY(-1px);
+}
+[data-theme="light"] .ep-retry-btn:hover {
+  background: var(--bg-hover);
+  transform: translateY(-1px);
+}

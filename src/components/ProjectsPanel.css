@@ -1,0 +1,114 @@
+/* ============================================================
+   Zenith Projects Panel
+   ============================================================ */
+
+.projects-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.projects-list {
+  list-style: none;
+  padding: 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── Project Item ── */
+.project-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  transition: var(--transition-fast);
+}
+
+.project-item:hover {
+  border-color: var(--border-default);
+  background: var(--bg-overlay);
+  cursor: pointer;
+}
+
+.project-item--has-status {
+  border-color: var(--border-default);
+}
+
+.project-icon-wrapper {
+  width: 32px; height: 32px;
+  background: #F9B21C15;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.project-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-desc {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  margin-top: 2px;
+}
+
+.project-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.project-files-count {
+  font-size: 0.68rem;
+  color: #226DB4;
+  background: #226DB415;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  font-weight: 600;
+}
+
+.project-date {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+/* ── Download Button ── */
+.project-download-btn {
+  width: 32px; height: 32px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: var(--transition-fast);
+}
+
+.project-download-btn:hover {
+  background: #226DB415;
+  border-color: #226DB4;
+  color: #226DB4;
+}

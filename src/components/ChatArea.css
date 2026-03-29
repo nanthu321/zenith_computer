@@ -1,0 +1,271 @@
+/* ════════════════════════════════════════════════════════════
+   Zenith Chat Area
+   ════════════════════════════════════════════════════════════ */
+
+/* ── Base layout ── */
+.chat-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+  background: transparent;
+}
+
+/* ── Error banner ── */
+.chat-error-banner { display: flex; align-items: center; gap: 10px; padding: 10px 20px; background: rgba(239,68,68,0.1); border-bottom: 1px solid rgba(239,68,68,0.25); color: #fca5a5; font-size: 0.85rem; flex-shrink: 0; animation: fadeIn 0.2s ease; }
+.error-icon { flex-shrink: 0; }
+.error-dismiss { margin-left: auto; background: none; border: none; color: #fca5a5; font-size: 1.2rem; cursor: pointer; padding: 2px 6px; border-radius: var(--radius-sm); transition: var(--transition-fast); line-height: 1; }
+.error-dismiss:hover { background: rgba(239,68,68,0.2); }
+
+/* ════════════════════════════════════════════════════════════
+   LANDING STATE  — input centered on screen
+   ════════════════════════════════════════════════════════════ */
+.chat-area--empty {
+  justify-content: center;
+  align-items: center;
+}
+
+.chat-landing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 720px;
+  padding: 0 24px 40px;
+  margin: 0 auto;
+  animation: landingIn 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes landingIn {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Logo */
+.landing-brand {
+  margin-bottom: 28px;
+  animation: floatLogo 5s ease-in-out infinite;
+}
+
+@keyframes floatLogo {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-6px); }
+}
+
+.landing-logo {
+  width: 4rem;
+  border-radius: 16px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 18px rgba(34, 109, 180, 0.28));
+}
+
+/* Greeting */
+.landing-greeting {
+  font-size: 2.15rem;
+  font-weight: 760;
+  color: var(--text-primary);
+  letter-spacing: -0.04em;
+  line-height: 1.2;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.landing-name {
+  background: linear-gradient(135deg, #226DB4 0%, #0A9949 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.landing-sub {
+  font-size: 0.98rem;
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.65;
+  max-width: 480px;
+  margin-bottom: 32px;
+  font-weight: 400;
+}
+
+/* ── Centered input wrapper ── */
+.landing-input-wrap {
+  width: 100%;
+  max-width: 680px;
+  margin-bottom: 24px;
+}
+
+/* Override ci-wrapper padding when inside landing */
+.landing-input-wrap .ci-wrapper {
+  padding: 0;
+}
+
+/* ── Suggestion chips ── */
+.landing-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  max-width: 640px;
+}
+
+.landing-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, color 0.18s, transform 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+}
+
+.landing-chip:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: rgba(34, 109, 180, 0.45);
+  color: var(--text-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(34, 109, 180, 0.12);
+}
+
+.landing-chip:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.landing-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chip-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.chip-text {
+  line-height: 1;
+}
+
+/* ════════════════════════════════════════════════════════════
+   ACTIVE CHAT STATE — messages + pinned input at bottom
+   ════════════════════════════════════════════════════════════ */
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  min-width: 0;
+  scroll-behavior: smooth;
+}
+
+.chat-messages::-webkit-scrollbar { width: 5px; }
+.chat-messages::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: var(--radius-full); }
+
+.messages-list {
+  max-width: 800px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 28px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+
+
+/* ── Date Separator (WhatsApp-style) ── */
+.date-separator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 0 6px;
+  position: relative;
+}
+
+.date-separator-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  padding: 4px 14px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-subtle);
+  letter-spacing: 0.02em;
+  user-select: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  white-space: nowrap;
+}
+
+/* ── Stop Generation Button ── */
+.stop-generation-wrapper {
+  display: flex;
+  justify-content: center;
+  padding: 0 20px 8px;
+  flex-shrink: 0;
+  animation: stopBtnIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.stop-generation-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  background: var(--bg-elevated);
+  border: 1.5px solid var(--border-default);
+  border-radius: var(--radius-full);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 550;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s, transform 0.1s;
+  white-space: nowrap;
+}
+
+.stop-generation-btn:hover {
+  background: rgba(228, 37, 39, 0.08);
+  border-color: rgba(228, 37, 39, 0.4);
+  color: #E42527;
+  box-shadow: 0 2px 12px rgba(228, 37, 39, 0.15);
+}
+
+.stop-generation-btn:active {
+  transform: scale(0.96);
+}
+
+.stop-icon {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+@keyframes stopBtnIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ════════════════════════════════════════════════════════════
+   RESPONSIVE
+   ════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .messages-list { padding: 16px 12px; }
+  .chat-landing { padding: 0 16px 32px; }
+  .landing-greeting { font-size: 1.55rem; }
+  .landing-sub { font-size: 0.9rem; margin-bottom: 22px; }
+  .landing-chips { gap: 7px; }
+  .landing-chip { font-size: 0.77rem; padding: 7px 13px; }
+  .landing-logo { width: 50px; height: 50px; border-radius: 12px; }
+  .date-separator-label { font-size: 0.68rem; padding: 3px 12px; }
+  .stop-generation-btn { font-size: 0.78rem; padding: 7px 16px; }
+}

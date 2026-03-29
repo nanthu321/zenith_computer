@@ -1,0 +1,84 @@
+/* ============================================================
+   Zenith Chat Page Layout
+   ============================================================ */
+
+.chat-page {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg-base);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% 80%, #226DB406 0%, transparent 70%),
+    radial-gradient(ellipse 60% 40% at 80% 20%, #F9B21C04 0%, transparent 70%);
+  position: relative;
+}
+
+/* ── Main Chat Area ── */
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  transition: var(--transition-normal);
+  position: relative;
+  z-index: 1;
+}
+
+.chat-main-expanded {
+  margin-left: 0;
+}
+
+/* ── Mobile Overlay ── */
+.mobile-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 49;
+  backdrop-filter: blur(4px);
+  display: none;
+}
+
+/* ── Mobile Topbar ── */
+.mobile-topbar {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle);
+  height: 56px;
+  flex-shrink: 0;
+}
+
+.mobile-menu-btn {
+  width: 36px; height: 36px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition-fast);
+}
+
+.mobile-menu-btn:hover { background: var(--bg-hover); }
+
+.mobile-title {
+  font-size: 0.95rem;
+  font-weight: 650;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+  letter-spacing: -0.01em;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .mobile-overlay { display: block; }
+  .mobile-topbar  { display: flex; }
+}

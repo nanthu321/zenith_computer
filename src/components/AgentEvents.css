@@ -1,0 +1,163 @@
+/* ============================================================
+   Zenith Agent Events — Thinking / Status / Iteration cards
+   ============================================================ */
+
+@keyframes agent-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes agent-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Container ── */
+.agent-events-container {
+  padding: 4px 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ── Thinking Card ── */
+.agent-thinking-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  width: fit-content;
+  margin-bottom: 2px;
+  animation: agent-fade-in 0.25s ease;
+  transition: all 0.4s ease;
+}
+
+.agent-thinking-active {
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  color: var(--text-primary);
+}
+
+.agent-thinking-done {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+/* ── Status Card ── */
+.agent-status-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  margin-bottom: 2px;
+  max-width: 480px;
+  user-select: none;
+  animation: agent-fade-in 0.25s ease;
+  transition: all 0.3s ease;
+}
+
+.agent-status-active {
+  background: var(--tool-color-bg);
+  border: 1px solid var(--tool-color-border);
+  color: var(--text-primary);
+  cursor: default;
+}
+
+.agent-status-done {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.agent-status-done:hover {
+  border-color: var(--border-default);
+}
+
+.agent-status-icon {
+  font-size: 0.92rem;
+  flex-shrink: 0;
+}
+
+.agent-status-label {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.agent-status-args {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  transition: max-width 0.2s;
+}
+
+.agent-status-args-expanded {
+  white-space: normal;
+  max-width: none;
+}
+
+.agent-status-toggle {
+  margin-left: auto;
+  font-size: 0.62rem;
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+/* ── Checkmark ── */
+.agent-check {
+  color: #10b981;
+  font-size: 0.78rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* ── Iteration Bar ── */
+.agent-iteration-bar {
+  margin-bottom: 8px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  animation: agent-fade-in 0.25s ease;
+  max-width: 300px;
+}
+
+.agent-iteration-track {
+  height: 2px;
+  background: var(--border-subtle);
+  border-radius: 2px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.agent-iteration-fill {
+  height: 100%;
+  background: #6366f1;
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+
+/* ── Spinner override inside cards ── */
+.agent-spinner {
+  color: #6366f1;
+}
+
+.agent-status-active .agent-spinner {
+  color: var(--tool-color, #6366f1);
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .agent-status-card {
+    max-width: 100%;
+  }
+  .agent-status-args {
+    max-width: 120px;
+  }
+}

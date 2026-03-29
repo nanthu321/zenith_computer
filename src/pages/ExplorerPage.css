@@ -1,0 +1,91 @@
+/* ══════════════════════════════════════════════════════════
+   ExplorerPage — Full-screen workspace explorer
+   Zenith Brand: #E42527 · #0A9949 · #226DB4 · #F9B21C
+   ══════════════════════════════════════════════════════════ */
+
+.explorer-page {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #080c14;
+}
+
+/* Make vsc-page fill the explorer-page container */
+.explorer-page > .vsc-page {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  width: 100%;
+}
+
+[data-theme="light"] .explorer-page {
+  background: var(--bg-base);
+}
+
+/* ── Back-to-Chat Logo Button ─────────────────────────── */
+.explorer-page-back-btn {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #0d1b2e, #0a1422);
+  border: none;
+  border-right: 1px solid rgba(34, 109, 180, 0.15);
+  border-bottom: 1px solid rgba(34, 109, 180, 0.15);
+  color: #8ab4d9;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  padding: 0;
+  outline: none;
+}
+
+.explorer-page-back-btn .nav-brand-logo {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  transition: transform 0.3s ease, filter 0.3s ease;
+  filter: drop-shadow(0 0 4px rgba(34, 109, 180, 0.2));
+}
+
+.explorer-page-back-btn:hover {
+  background: linear-gradient(145deg, #122a44, #0f2238);
+}
+
+.explorer-page-back-btn:hover .nav-brand-logo {
+  transform: scale(1.12) rotate(-5deg);
+  filter: drop-shadow(0 0 10px rgba(249, 178, 28, 0.35));
+}
+
+.explorer-page-back-btn:active {
+  transform: scale(0.95);
+}
+
+/* Light theme */
+[data-theme="light"] .explorer-page-back-btn {
+  background: var(--bg-surface);
+  border-color: var(--border-subtle);
+  color: var(--text-tertiary);
+}
+[data-theme="light"] .explorer-page-back-btn:hover {
+  background: var(--bg-hover);
+}
+
+/* Make room for the fixed logo button in activity bar and sidebar */
+.explorer-page .vsc-activity-bar {
+  padding-top: 50px;
+}
+
+/* Prevent the sidebar header from sitting behind the fixed logo button.
+   The logo overlaps the top-left 50×50px, and on narrow sidebars
+   the header "PROJECTS" text could be obscured or misaligned. */
+.explorer-page .vsc-sidebar {
+  padding-top: 0;
+}

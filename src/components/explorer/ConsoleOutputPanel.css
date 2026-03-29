@@ -1,0 +1,261 @@
+/* ══════════════════════════════════════════════════════════════
+   ConsoleOutputPanel — Terminal-style output display
+   Zenith Brand: #E42527 · #0A9949 · #226DB4 · #F9B21C
+   ══════════════════════════════════════════════════════════════ */
+
+@keyframes cop-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes cop-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ═══════════════════════════════════════════════
+   ROOT CONTAINER
+   ═══════════════════════════════════════════════ */
+.cop-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: #060910;
+  border-top: 1px solid rgba(34, 109, 180, 0.10);
+  animation: cop-fade-in 0.2s ease;
+}
+[data-theme="light"] .cop-panel {
+  background: #f6f8fa;
+  border-top-color: var(--border-subtle);
+}
+
+/* ═══════════════════════════════════════════════
+   HEADER BAR
+   ═══════════════════════════════════════════════ */
+.cop-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 12px;
+  flex-shrink: 0;
+  background: #0a1018;
+  border-bottom: 1px solid rgba(34, 109, 180, 0.08);
+  user-select: none;
+}
+[data-theme="light"] .cop-header {
+  background: var(--bg-surface);
+  border-bottom-color: var(--border-subtle);
+}
+
+.cop-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  color: #5a8aac;
+}
+[data-theme="light"] .cop-header-left {
+  color: var(--text-tertiary);
+}
+
+.cop-header-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.cop-lang-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 4px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.cop-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 10px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.cop-timing {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  color: #3a5570;
+  white-space: nowrap;
+}
+[data-theme="light"] .cop-timing {
+  color: var(--text-muted);
+}
+
+.cop-exitcode {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  padding: 1px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.cop-exitcode-ok {
+  color: #0A9949;
+  background: rgba(10, 153, 73, 0.08);
+}
+.cop-exitcode-err {
+  color: #E42527;
+  background: rgba(228, 37, 39, 0.08);
+}
+
+.cop-header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* ── Buttons ── */
+.cop-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+  color: #5a8aac;
+  transition: all 0.12s ease;
+  padding: 0;
+}
+.cop-btn:hover {
+  background: rgba(34, 109, 180, 0.10);
+  color: #c8d8e8;
+}
+[data-theme="light"] .cop-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.cop-btn-stop {
+  color: #E42527;
+}
+.cop-btn-stop:hover {
+  background: rgba(228, 37, 39, 0.10);
+  color: #E42527;
+}
+
+.cop-btn-close:hover {
+  background: rgba(228, 37, 39, 0.08);
+  color: #E42527;
+}
+
+/* ═══════════════════════════════════════════════
+   OUTPUT BODY
+   ═══════════════════════════════════════════════ */
+.cop-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 12px;
+  line-height: 1.65;
+  min-height: 0;
+}
+.cop-body::-webkit-scrollbar { width: 6px; }
+.cop-body::-webkit-scrollbar-thumb {
+  background: rgba(100, 140, 180, 0.15);
+  border-radius: 3px;
+}
+.cop-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 140, 180, 0.28);
+}
+
+/* ── Empty state ── */
+.cop-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 60px;
+}
+.cop-empty-text {
+  color: #2e4558;
+  font-style: italic;
+  font-size: 11.5px;
+}
+[data-theme="light"] .cop-empty-text {
+  color: var(--text-muted);
+}
+
+/* ── Output lines ── */
+.cop-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 1px 0;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.cop-line-prefix {
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.cop-prefix-system {
+  color: #226DB4;
+}
+.cop-prefix-stderr {
+  color: #E42527;
+}
+
+.cop-line-text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Line type colors ── */
+.cop-line-stdout {
+  color: #a6e3a1;
+}
+[data-theme="light"] .cop-line-stdout {
+  color: #1a7a3a;
+}
+
+.cop-line-stderr {
+  color: #f38ba8;
+  background: rgba(228, 37, 39, 0.04);
+  border-radius: 2px;
+  padding: 1px 4px;
+  margin: 1px -4px;
+}
+[data-theme="light"] .cop-line-stderr {
+  color: #c02020;
+  background: rgba(228, 37, 39, 0.06);
+}
+
+.cop-line-system {
+  color: #5a8aac;
+  font-style: italic;
+  opacity: 0.85;
+}
+[data-theme="light"] .cop-line-system {
+  color: #6b7b8d;
+}

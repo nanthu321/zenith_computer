@@ -1,0 +1,17 @@
+.nexus-logo-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.nexus-animated svg {
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+
+.nexus-logo-text {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
