@@ -60,6 +60,12 @@ export default function Sidebar({
   const [searchQuery, setSearchQuery]     = useState('')
   const [searchOpen, setSearchOpen]       = useState(false)
   const searchRef                         = useRef(null)
+
+  /* ── Helper: clear search state when navigating away ── */
+  const clearSearch = () => {
+    setSearchQuery('')
+    setSearchOpen(false)
+  }
   // ── Sort sessions: most recently updated/created first ──
   // When a user sends a message in Chat C, touchSession() updates its updated_at.
   // Sorting by updated_at (desc) ensures that chat bubbles to the top immediately.
@@ -139,7 +145,7 @@ export default function Sidebar({
       {/* ── Top Actions: New Chat, Search ── */}
       {!collapsed && (
         <div className="sidebar-actions">
-          <button className="sidebar-action-btn" onClick={onNewChat}>
+          <button className="sidebar-action-btn" onClick={() => { clearSearch(); onNewChat() }}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
             </svg>
@@ -181,7 +187,7 @@ export default function Sidebar({
         <nav className="sidebar-nav">
           <button
             className={`sidebar-nav-btn ${sidebarTab === SIDEBAR_TABS.CHATS ? 'sidebar-nav-active' : ''}`}
-            onClick={() => onTabChange(SIDEBAR_TABS.CHATS)}
+            onClick={() => { clearSearch(); onTabChange(SIDEBAR_TABS.CHATS) }}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M1.5 2h13v9.5H8.5l-3 3V11.5H1.5V2z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
@@ -190,7 +196,7 @@ export default function Sidebar({
           </button>
           <button
             className={`sidebar-nav-btn ${sidebarTab === SIDEBAR_TABS.TASKS ? 'sidebar-nav-active' : ''}`}
-            onClick={() => onTabChange(SIDEBAR_TABS.TASKS)}
+            onClick={() => { clearSearch(); onTabChange(SIDEBAR_TABS.TASKS) }}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.3"/>
@@ -203,7 +209,7 @@ export default function Sidebar({
           </button>
 <button
             className="sidebar-nav-btn"
-            onClick={() => navigate('/workspace')}
+            onClick={() => { clearSearch(); navigate('/workspace') }}
             title="Open Projects"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -226,21 +232,21 @@ export default function Sidebar({
         <div className="sidebar-collapsed-nav">
           <button
             className={`sidebar-icon-btn ${sidebarTab === SIDEBAR_TABS.CHATS ? 'sidebar-icon-active' : ''}`}
-            onClick={() => { onToggleCollapse(); onTabChange(SIDEBAR_TABS.CHATS) }}
+            onClick={() => { clearSearch(); onToggleCollapse(); onTabChange(SIDEBAR_TABS.CHATS) }}
             title="Chats"
           >
             <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
               <path d="M1.5 2h13v9.5H8.5l-3 3V11.5H1.5V2z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
             </svg>
           </button>
-          <button className="sidebar-icon-btn" onClick={onNewChat} title="New chat">
+          <button className="sidebar-icon-btn" onClick={() => { clearSearch(); onNewChat() }} title="New chat">
             <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
               <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
             </svg>
           </button>
           <button
             className={`sidebar-icon-btn ${sidebarTab === SIDEBAR_TABS.TASKS ? 'sidebar-icon-active' : ''}`}
-            onClick={() => { onToggleCollapse(); onTabChange(SIDEBAR_TABS.TASKS) }}
+            onClick={() => { clearSearch(); onToggleCollapse(); onTabChange(SIDEBAR_TABS.TASKS) }}
             title="Tasks"
           >
             <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
@@ -250,7 +256,7 @@ export default function Sidebar({
           </button>
           <button
             className="sidebar-icon-btn"
-            onClick={() => navigate('/workspace')}
+            onClick={() => { clearSearch(); navigate('/workspace') }}
             title="Projects"
           >
             <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
