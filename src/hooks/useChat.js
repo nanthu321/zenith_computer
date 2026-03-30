@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { apiFetch, streamChat } from '../utils/api.js'
-import { setSSECacheEntry, enrichMessagesWithSSECache, clearSSECache } from '../utils/sseCache.js'
 import { saveToolCalls, enrichMessagesFromDB, deleteSessionToolCalls, evictOldRecords } from '../utils/toolCallsDB.js'
 import { getArtifactsCache, setArtifactsCache, clearArtifactsCache } from '../utils/artifactsCache.js'
+import { isStreamWorkerReady, recoverStream as recoverStreamFromSW, subscribeToStream, clearStreamStateSW } from '../utils/streamWorkerManager.js'
 
 /**
  * Normalize any possible backend response shape into a flat messages array.
@@ -47,11 +47,18 @@ function deduplicateMessages(msgs) {
       if (existing.role === msg.role &&
           existing.content === msg.content &&
           existing.content !== '' &&  // Don't dedup empty messages
-          Math.abs(new Date(existing.created_at).getTime() - new Date(msg.created_at).getTime()) < 5000) {
+          (Math.abs(new Date(existing.created_at).getTime() - new Date(msg.created_at).getTime()) < 5000 || existing._recovered || msg._recovered)) {
         isDupe = true
         // Prefer the message with a real (non-temp) ID
         if (mid && !mid.startsWith('temp_') && String(existing.message_id).startsWith('temp_')) {
           // Replace the temp version with the real one
+          const idx = result.indexOf(existing)
+          result[idx] = msg
+          seen.delete(String(existing.message_id))
+          seen.set(mid, msg)
+        }
+        // Prefer non-recovered message over recovered one
+        if (!msg._recovered && existing._recovered) {
           const idx = result.indexOf(existing)
           result[idx] = msg
           seen.delete(String(existing.message_id))
@@ -164,6 +171,15 @@ function mergeMessages(apiMessages, cachedMessages) {
     // If it's a freshly-streamed assistant message that's still streaming — include it
     // (backend won't have it yet; we don't want to lose it during the fetch)
     if (mid.startsWith('temp_assistant_') && m.role === 'assistant' && m.isStreaming) return true
+    // If it's a recovered message (from SW/localStorage after page refresh) — include it
+    // unless the API already has a message with matching content
+    if (m._recovered && m.role === 'assistant' && m.content) {
+      // Check if any API message has the same content (the backend version)
+      const hasMatchingContent = apiMessages.some(api =>
+        api.role === 'assistant' && api.content === m.content
+      )
+      if (!hasMatchingContent) return true
+    }
     // If it's a non-temp message not in API, API is the source of truth — skip
     return false
   })
@@ -213,7 +229,7 @@ function mergeMessages(apiMessages, cachedMessages) {
 //  Lifecycle:
 //    - Created on first onToolResult (or onToolStart for safety)
 //    - Updated on every onToolResult and periodically on onToken
-//    - Deleted in onDone (after final persistence to IDB + SSE cache)
+//    - Deleted in onDone (after final persistence to localStorage + cache)
 //    - Read by fetchMessages on page load to recover partial streaming data
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -259,12 +275,148 @@ function loadStreamingState(sessionId) {
 }
 
 /**
- * Clear streaming state after onDone (no longer needed — final data is in IDB/SSE cache).
+ * Clear streaming state after onDone (no longer needed — final data is in localStorage cache).
  */
 function clearStreamingState(sessionId) {
   if (!sessionId) return
   try {
     localStorage.removeItem(STREAMING_STATE_PREFIX + sessionId)
+  } catch { /* ignore */ }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  USER MESSAGE PERSISTENCE
+//
+//  Problem:  The backend GET /api/messages/:sessionId does NOT return user
+//            messages. They only exist in the in-memory cache (messagesCacheRef),
+//            which is lost on page refresh. After refresh, only assistant
+//            messages (from the API) are displayed — the user's sent messages
+//            disappear.
+//
+//  Solution: Persist user messages to localStorage when they are created in
+//            sendMessage(). On page load / fetchMessages(), load them back
+//            and merge with the API response so the full conversation is shown.
+//
+//  Storage key: zenith_user_msgs_{sessionId}
+//  Format: Array of { message_id, role, content, images?, created_at }
+//
+//  Lifecycle:
+//    - Created when sendMessage() fires (optimistic user message)
+//    - Updated in onDone when backend returns user_message_id (real ID replaces temp)
+//    - Read by fetchMessages() on page load to merge with API messages
+//    - Deleted when session is deleted (cleanupSession)
+//    - Evicted if older than 30 days
+// ─────────────────────────────────────────────────────────────────────────────
+
+const USER_MSGS_PREFIX = 'zenith_user_msgs_'
+const USER_MSGS_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+
+/**
+ * Save a user message to localStorage for a given session.
+ * Appends to existing messages for that session.
+ */
+function persistUserMessage(sessionId, userMsg) {
+  if (!sessionId || !userMsg) return
+  try {
+    const key = USER_MSGS_PREFIX + sessionId
+    const existing = JSON.parse(localStorage.getItem(key) || '[]')
+    // Avoid duplicates by message_id
+    if (existing.some(m => m.message_id === userMsg.message_id)) return
+    existing.push({
+      message_id: userMsg.message_id,
+      role: userMsg.role,
+      content: userMsg.content,
+      images: userMsg.images || undefined,
+      created_at: userMsg.created_at,
+      _persisted_at: Date.now(),
+    })
+    localStorage.setItem(key, JSON.stringify(existing))
+  } catch (e) {
+    console.warn('[useChat] Failed to persist user message:', e.message)
+  }
+}
+
+/**
+ * Update a persisted user message's ID (replace temp ID with real backend ID).
+ */
+function updatePersistedUserMessageId(sessionId, tempId, realId) {
+  if (!sessionId || !tempId || !realId) return
+  try {
+    const key = USER_MSGS_PREFIX + sessionId
+    const existing = JSON.parse(localStorage.getItem(key) || '[]')
+    let changed = false
+    for (let i = 0; i < existing.length; i++) {
+      if (existing[i].message_id === tempId) {
+        existing[i].message_id = realId
+        changed = true
+        break
+      }
+    }
+    if (changed) {
+      localStorage.setItem(key, JSON.stringify(existing))
+    }
+  } catch (e) {
+    console.warn('[useChat] Failed to update persisted user message ID:', e.message)
+  }
+}
+
+/**
+ * Load persisted user messages for a session from localStorage.
+ * Returns an array of user message objects, or empty array.
+ */
+function loadPersistedUserMessages(sessionId) {
+  if (!sessionId) return []
+  try {
+    const key = USER_MSGS_PREFIX + sessionId
+    const raw = localStorage.getItem(key)
+    if (!raw) return []
+    const msgs = JSON.parse(raw)
+    // Discard stale entries
+    const cutoff = Date.now() - USER_MSGS_MAX_AGE_MS
+    const valid = msgs.filter(m => (m._persisted_at || 0) > cutoff)
+    if (valid.length !== msgs.length) {
+      localStorage.setItem(key, JSON.stringify(valid))
+    }
+    return valid
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Delete persisted user messages for a session (called on session delete).
+ */
+function clearPersistedUserMessages(sessionId) {
+  if (!sessionId) return
+  try {
+    localStorage.removeItem(USER_MSGS_PREFIX + sessionId)
+  } catch { /* ignore */ }
+}
+
+/**
+ * Evict old persisted user message entries (>30 days) across all sessions.
+ * Called periodically to prevent localStorage bloat.
+ */
+function evictOldUserMessages() {
+  try {
+    const keys = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith(USER_MSGS_PREFIX)) keys.push(k)
+    }
+    const cutoff = Date.now() - USER_MSGS_MAX_AGE_MS
+    for (const key of keys) {
+      const raw = localStorage.getItem(key)
+      if (!raw) continue
+      const msgs = JSON.parse(raw)
+      const valid = msgs.filter(m => (m._persisted_at || 0) > cutoff)
+      if (valid.length === 0) {
+        localStorage.removeItem(key)
+      } else if (valid.length !== msgs.length) {
+        localStorage.setItem(key, JSON.stringify(valid))
+      }
+    }
   } catch { /* ignore */ }
 }
 
@@ -371,17 +523,6 @@ export function useChat() {
           streamingStartedAt: state.streamingStartedAt,
           sessionId,
         })
-
-        // Also persist to SSE cache as backup (synchronous localStorage write)
-        const contentPrefix = (state.fullContent || '').substring(0, 150).trim()
-        const cachePayload = {
-          tool_calls: toolCallsArr,
-          generation_time: ((Date.now() - (state.streamingStartedAt || Date.now())) / 1000).toFixed(1),
-          content_prefix: contentPrefix || undefined,
-          role: 'assistant',
-          created_at: new Date().toISOString(),
-        }
-        setSSECacheEntry(sessionId, state.assistantMsgId, cachePayload)
       }
     }
 
@@ -400,6 +541,15 @@ export function useChat() {
   }, [])
 
   // ── Helper: update cache and optionally React state ──
+  //
+  // CRITICAL: This function is called by streaming callbacks (onToken, onToolStart,
+  // onToolResult, etc.) which run in closures anchored to the ChatContext — they
+  // continue firing even when ChatPage is unmounted (e.g. user navigated to
+  // /workspace). The cache is ALWAYS updated. React state is updated ONLY if the
+  // session is currently the active session visible in the UI.
+  //
+  // When the user navigates back to /chat, setActiveSession syncs React state
+  // from the cache, so all tokens accumulated while away are instantly visible.
   const updateMessagesForSession = useCallback((sessionId, updater) => {
     const currentCached = messagesCacheRef.current[sessionId] || []
     const newMessages = typeof updater === 'function' ? updater(currentCached) : updater
@@ -589,116 +739,86 @@ export function useChat() {
         const normalized = normalizeMessageList(rawData)
         console.log('[useChat] fetchMessages normalized:', normalized.length, 'messages for session', sessionId)
 
-        // ── Enrich API messages with persisted tool_calls ──
-        // The backend may not return tool_calls/generation_time in messages.
-        // We use a THREE-LAYER approach for maximum reliability:
-        //   Layer 1: IndexedDB (primary) — survives tab close, indexed by
-        //            msgId + tempId + contentHash + positionIndex
-        //   Layer 2: localStorage SSE cache (fallback) — same session,
-        //            content-prefix based matching
-        //   Layer 3: Streaming state recovery (NEW) — partial tool_calls
-        //            saved incrementally during streaming, survives mid-stream refresh
-
-        const apiHasToolCalls = normalized.some(m => m.tool_calls && m.tool_calls.length > 0)
-        console.log('[useChat] fetchMessages: API messages have tool_calls?', apiHasToolCalls,
-          '| assistant msgs:', normalized.filter(m => m.role === 'assistant').length)
-
-        // Layer 1: IndexedDB enrichment (async, primary)
-        let enriched = await enrichMessagesFromDB(sessionId, normalized)
-
-        // Layer 2: localStorage SSE cache enrichment (sync fallback)
-        // Only run for messages still missing tool_calls after IndexedDB pass
-        const stillMissingToolCalls = enriched.some(
-          m => m.role === 'assistant' && (!m.tool_calls || m.tool_calls.length === 0)
-        )
-        if (stillMissingToolCalls) {
-          enriched = enrichMessagesWithSSECache(sessionId, enriched)
+        // ── FIX: Merge persisted user messages from localStorage ──
+        // The backend does NOT return user messages in GET /api/messages/:sessionId.
+        // We persist user messages to localStorage in sendMessage() and merge them
+        // back here so the full conversation is shown after page refresh.
+        const persistedUserMsgs = loadPersistedUserMessages(sessionId)
+        if (persistedUserMsgs.length > 0) {
+          const apiMsgIds = new Set(normalized.map(m => String(m.message_id)))
+          // Also check by content+role to avoid duplicates if backend DOES return some user messages
+          const apiUserContents = new Set(
+            normalized.filter(m => m.role === 'user').map(m => m.content)
+          )
+          for (const um of persistedUserMsgs) {
+            // Skip if already in API response (by ID or by content match)
+            if (apiMsgIds.has(String(um.message_id))) continue
+            if (apiUserContents.has(um.content)) continue
+            // Insert at correct chronological position
+            const umTime = new Date(um.created_at).getTime()
+            let insertIdx = normalized.length
+            for (let i = 0; i < normalized.length; i++) {
+              const mTime = new Date(normalized[i].created_at).getTime()
+              if (mTime > umTime) { insertIdx = i; break }
+            }
+            normalized.splice(insertIdx, 0, um)
+          }
+          console.log('[useChat] fetchMessages: merged', persistedUserMsgs.length,
+            'persisted user messages for session', sessionId,
+            '| total messages now:', normalized.length)
         }
 
-        // ── Layer 3 (NEW): Recover partial streaming state from localStorage ──
-        // If the user refreshed mid-stream, we may have partial tool_calls saved
-        // by the incremental persistence or the beforeunload handler.
-        const streamingState = loadStreamingState(sessionId)
-        if (streamingState && streamingState.toolCalls && streamingState.toolCalls.length > 0) {
-          console.log('[useChat] fetchMessages: Found partial streaming state for session', sessionId,
-            '| tool_calls:', streamingState.toolCalls.length,
-            '| content:', (streamingState.fullContent || '').length, 'chars')
+        // ── Enrich API messages with persisted tool_calls ──
+        // The backend GET /api/messages/:sessionId does NOT return tool_calls
+        // or generation_time. We persist these in localStorage during streaming
+        // and re-attach them here on page load.
+        //
+        // Two enrichment layers:
+        //   1. localStorage (primary) — survives tab close, matched by
+        //      msgId + tempId + contentHash + positionIndex
+        //   2. Streaming state recovery — partial tool_calls saved
+        //      incrementally during streaming, survives mid-stream refresh
 
-          // Find the last assistant message that's missing tool_calls and apply the recovered data
+        // Layer 1: localStorage enrichment
+        let enriched = await enrichMessagesFromDB(sessionId, normalized)
+
+        // Layer 2: Recover partial streaming state from localStorage
+        // (for mid-stream page refresh — tool_calls accumulated before onDone)
+        const streamingState = loadStreamingState(sessionId)
+        if (streamingState?.toolCalls?.length > 0) {
           const lastAssistantIdx = enriched.map((m, i) => ({ m, i }))
             .filter(({ m }) => m.role === 'assistant')
             .pop()
 
-          if (lastAssistantIdx) {
-            const lastAssistant = lastAssistantIdx.m
-            const hasToolCalls = lastAssistant.tool_calls && lastAssistant.tool_calls.length > 0
-
-            if (!hasToolCalls) {
-              enriched = enriched.map((m, i) => {
-                if (i === lastAssistantIdx.i) {
-                  console.log('[useChat] fetchMessages: Applying recovered streaming tool_calls to msg',
-                    m.message_id, '| tools:', streamingState.toolCalls.map(tc => tc.tool).join(', '))
-                  return {
-                    ...m,
-                    tool_calls: streamingState.toolCalls,
-                    generation_time: streamingState.streamingStartedAt
-                      ? ((Date.now() - streamingState.streamingStartedAt) / 1000).toFixed(1)
-                      : undefined,
-                    // Use recovered content if it's longer than what the API returned
-                    content: (streamingState.fullContent || '').length > (m.content || '').length
-                      ? streamingState.fullContent
-                      : m.content,
-                  }
-                }
-                return m
-              })
-            }
+          if (lastAssistantIdx && !lastAssistantIdx.m.tool_calls?.length) {
+            enriched = enriched.map((m, i) => {
+              if (i !== lastAssistantIdx.i) return m
+              return {
+                ...m,
+                tool_calls: streamingState.toolCalls,
+                generation_time: streamingState.streamingStartedAt
+                  ? ((Date.now() - streamingState.streamingStartedAt) / 1000).toFixed(1)
+                  : undefined,
+                content: (streamingState.fullContent || '').length > (m.content || '').length
+                  ? streamingState.fullContent
+                  : m.content,
+              }
+            })
           }
 
-          // Also persist the recovered tool_calls to IDB + SSE cache for future loads
-          // so we don't rely on the streaming state key forever.
-          const recoveredToolCalls = streamingState.toolCalls
-          const recoveredContent = streamingState.fullContent || ''
-          const contentPrefix = recoveredContent.substring(0, 150).trim()
+          // Promote recovered data to localStorage tool_calls store, then clear streaming state
           const positionIndex = enriched.filter(m => m.role === 'assistant').length - 1
-
-          // Persist to IndexedDB
           saveToolCalls(sessionId, {
-            msgId:         '',
-            tempId:        streamingState.assistantMsgId || '',
-            contentText:   recoveredContent,
-            positionIndex: positionIndex >= 0 ? positionIndex : 0,
-            toolCalls:     recoveredToolCalls,
+            msgId:          '',
+            tempId:         streamingState.assistantMsgId || '',
+            contentText:    streamingState.fullContent || '',
+            positionIndex:  positionIndex >= 0 ? positionIndex : 0,
+            toolCalls:      streamingState.toolCalls,
             generationTime: streamingState.streamingStartedAt
               ? ((Date.now() - streamingState.streamingStartedAt) / 1000).toFixed(1)
               : '',
-          }).then(() => {
-            // After successful IDB persist, clear the streaming state
-            clearStreamingState(sessionId)
-            console.log('[useChat] fetchMessages: Promoted recovered streaming state to IDB for session', sessionId)
-          }).catch(() => {})
-
-          // Persist to SSE cache as well
-          const cachePayload = {
-            tool_calls: recoveredToolCalls,
-            generation_time: streamingState.streamingStartedAt
-              ? ((Date.now() - streamingState.streamingStartedAt) / 1000).toFixed(1)
-              : undefined,
-            content_prefix: contentPrefix || undefined,
-            role: 'assistant',
-            created_at: new Date().toISOString(),
-          }
-          if (streamingState.assistantMsgId) {
-            setSSECacheEntry(sessionId, streamingState.assistantMsgId, cachePayload)
-          }
-          if (contentPrefix && contentPrefix.length > 20) {
-            const contentKey = `content_${contentPrefix.substring(0, 80).replace(/\s+/g, '_')}`
-            setSSECacheEntry(sessionId, contentKey, cachePayload)
-          }
+          }).then(() => clearStreamingState(sessionId)).catch(() => {})
         }
-
-        const enrichedHasToolCalls = enriched.some(m => m.tool_calls && m.tool_calls.length > 0)
-        console.log('[useChat] fetchMessages: After enrichment (IDB+SSE+StreamState), has tool_calls?', enrichedHasToolCalls)
 
         // ── Load in-memory cache for merging ──
         const cachedMessages = messagesCacheRef.current[sessionId] || []
@@ -854,6 +974,11 @@ export function useChat() {
 
     updateMessagesForSession(sessionId, prev => [...prev, userMsg, assistantMsg])
 
+    // ── FIX: Persist user message to localStorage so it survives page refresh ──
+    // The backend does NOT return user messages in GET /api/messages/:sessionId,
+    // so without this, the user's sent messages disappear after refresh.
+    persistUserMessage(sessionId, userMsg)
+
     streamingSessionsRef.current.add(sessionId)
     if (activeSessionRef.current === sessionId) {
       setIsStreaming(true)
@@ -875,6 +1000,9 @@ export function useChat() {
 
     // ── FIX: Helper to incrementally persist tool_calls to localStorage ──
     // Called on every onToolResult so partial progress survives page refresh.
+    // Incrementally persist tool_calls to localStorage on every onToolResult.
+    // This is lightweight (synchronous) and ensures partial progress survives
+    // mid-stream page refresh. Data is promoted to localStorage tool_calls store in onDone.
     const _persistToolCallsIncremental = () => {
       const toolCallsArr = Object.values(activeToolCalls)
       if (toolCallsArr.length === 0) return
@@ -895,21 +1023,6 @@ export function useChat() {
         streamingStartedAt,
         sessionId,
       })
-
-      // Also update SSE cache incrementally (synchronous localStorage write)
-      const contentPrefix = (fullContent || '').substring(0, 150).trim()
-      const cachePayload = {
-        tool_calls: toolCallsArr,
-        generation_time: ((Date.now() - streamingStartedAt) / 1000).toFixed(1),
-        content_prefix: contentPrefix || undefined,
-        role: 'assistant',
-        created_at: new Date().toISOString(),
-      }
-      setSSECacheEntry(sessionId, assistantMsgId, cachePayload)
-
-      console.log('[useChat] Incremental persist: session', sessionId,
-        '| tool_calls:', toolCallsArr.length,
-        '| content:', (fullContent || '').length, 'chars')
     }
 
     const controller = streamChat(sessionId, content, {
@@ -1150,6 +1263,8 @@ export function useChat() {
             // Update user message — if backend returns user_message_id, use it.
             // This ensures user messages get real IDs for backend persistence.
             if (m.message_id === userMsgTempId && data?.user_message_id) {
+              // ── FIX: Also update the persisted user message ID in localStorage ──
+              updatePersistedUserMessageId(sessionId, userMsgTempId, data.user_message_id)
               return {
                 ...m,
                 message_id: data.user_message_id,
@@ -1159,18 +1274,8 @@ export function useChat() {
           })
         )
 
-        // ── Persist tool_calls so they survive page refresh / tab close ──
-        //
-        // We write to TWO stores for belt-and-suspenders reliability:
-        //   1. IndexedDB (primary)   — survives tab close, large quota, indexed by
-        //                              msgId + tempId + contentHash + positionIndex
-        //   2. localStorage (backup) — survives page refresh, instant read on load
-        //
-        const persistId = data?.message_id || assistantMsgId
+        // ── Persist tool_calls to localStorage so they survive page refresh ──
         if (finalToolCalls.length > 0) {
-          const contentPrefix = (fullContent || '').substring(0, 150).trim()
-
-          // ── Store 1: IndexedDB ──
           // Calculate position index (how many assistant messages came before this one)
           const currentMessages = messagesCacheRef.current[sessionId] || []
           const assistantMsgsBefore = currentMessages.filter(
@@ -1178,44 +1283,16 @@ export function useChat() {
           ).length
 
           saveToolCalls(sessionId, {
-            msgId:         data?.message_id ? String(data.message_id) : '',
-            tempId:        assistantMsgId,
-            contentText:   fullContent || '',
-            positionIndex: assistantMsgsBefore,
-            toolCalls:     finalToolCalls,
+            msgId:          data?.message_id ? String(data.message_id) : '',
+            tempId:         assistantMsgId,
+            contentText:    fullContent || '',
+            positionIndex:  assistantMsgsBefore,
+            toolCalls:      finalToolCalls,
             generationTime: generationTime,
-          }).then(() => evictOldRecords()).catch(() => {})
-
-          // ── Store 2: localStorage SSE cache (fallback) ──
-          const cachePayload = {
-            tool_calls: finalToolCalls,
-            generation_time: generationTime || undefined,
-            content_prefix: contentPrefix || undefined,
-            role: 'assistant',
-            created_at: new Date().toISOString(),
-          }
-
-          // Persist under real backend message_id
-          setSSECacheEntry(sessionId, persistId, cachePayload)
-
-          // Also under temp ID
-          if (data?.message_id && data.message_id !== assistantMsgId) {
-            setSSECacheEntry(sessionId, assistantMsgId, cachePayload)
-          }
-
-          // Also under content-hash key
-          if (contentPrefix && contentPrefix.length > 20) {
-            const contentKey = `content_${contentPrefix.substring(0, 80).replace(/\s+/g, '_')}`
-            setSSECacheEntry(sessionId, contentKey, cachePayload)
-          }
-
-          console.log('[useChat] Persisted tool_calls (IDB + localStorage) for message', persistId,
-            '| tool_calls:', finalToolCalls.length, '| posIdx:', assistantMsgsBefore,
-            '| gen_time:', generationTime,
-            '| content_prefix:', contentPrefix?.substring(0, 50))
+          }).then(() => { evictOldRecords(); evictOldUserMessages() }).catch(() => {})
         }
 
-        // ── FIX: Clean up streaming state — final data is now in IDB + SSE cache ──
+        // Clean up streaming state — final data is now in localStorage tool_calls store
         clearStreamingState(sessionId)
         delete activeStreamingStateRef.current[sessionId]
 
@@ -1258,8 +1335,20 @@ export function useChat() {
           onBackgroundCompleteRef.current(sessionId, data?.session_title || 'A conversation')
         }
 
+        // ── ALWAYS set isStreaming to false when a stream completes ──
+        // Previously this was gated behind isActiveNow, which caused a bug:
+        // if the user navigated away (New Chat / different session / /workspace)
+        // during streaming, isActiveNow would be false, setIsStreaming(false)
+        // would NOT be called, and the context's isStreaming would stay true.
+        // This caused the ChatInput on ANY page to show "Generating response..."
+        // even though no stream was running for the current view.
+        //
+        // FIX: Always reset isStreaming. If the user comes back to the completed
+        // session, setActiveSession re-syncs isStreaming from streamingSessionsRef
+        // (which has already had this session removed above).
+        setIsStreaming(false)
+
         if (isActiveNow) {
-          setIsStreaming(false)
           if (!wasAborted) {
             setTimeout(() => {
               updateAgentEventsForSession(sessionId, [])
@@ -1289,15 +1378,24 @@ export function useChat() {
             )
           )
 
+          // ── FIX: Also remove the persisted user message from localStorage ──
+          try {
+            const umKey = USER_MSGS_PREFIX + sessionId
+            const umList = JSON.parse(localStorage.getItem(umKey) || '[]')
+            const filtered = umList.filter(m => m.message_id !== userMsgTempId)
+            if (filtered.length !== umList.length) {
+              localStorage.setItem(umKey, JSON.stringify(filtered))
+            }
+          } catch { /* ignore */ }
+
           // Clean up streaming state
           delete activeStreamingStateRef.current[sessionId]
           streamingSessionsRef.current.delete(sessionId)
           isSendingRef.current.delete(sessionId)
           delete abortControllersRef.current[sessionId]
 
-          if (isActiveNow) {
-            setIsStreaming(false)
-          }
+          // Always reset isStreaming (see onDone fix comment for rationale)
+          setIsStreaming(false)
 
           // Auto-queue the message via the registered callback
           onConflictQueueRef.current(sessionId, content)
@@ -1335,8 +1433,10 @@ export function useChat() {
 
         if (isActiveNow) {
           setError(errMsg || 'Streaming failed. Please try again.')
-          setIsStreaming(false)
         }
+
+        // Always reset isStreaming (see onDone fix comment for rationale)
+        setIsStreaming(false)
 
         // ── FIX: Clean up streaming state ref on error ──
         delete activeStreamingStateRef.current[sessionId]
@@ -1411,15 +1511,14 @@ export function useChat() {
     delete artifactsCacheRef.current[sessionId]
     delete fetchInFlightRef.current[sessionId]
     delete recentlyStreamedRef.current[sessionId]
-    // ── FIX: Clean up streaming state on session cleanup ──
     delete activeStreamingStateRef.current[sessionId]
     clearStreamingState(sessionId)
-    // Clear localStorage SSE cache
-    clearSSECache(sessionId)
-    // Clear localStorage artifacts cache
     clearArtifactsCache(sessionId)
-    // Clear IndexedDB tool_calls store
-    deleteSessionToolCalls(sessionId).catch(() => {})
+    deleteSessionToolCalls(sessionId)
+    // clearPersistedUserMessages is synchronous — no .catch() needed
+    try {
+      clearPersistedUserMessages(sessionId)
+    } catch (_) { /* ignore */ }
     if (abortControllersRef.current[sessionId]) {
       abortControllersRef.current[sessionId].abort()
       delete abortControllersRef.current[sessionId]
@@ -1427,6 +1526,287 @@ export function useChat() {
     streamingSessionsRef.current.delete(sessionId)
     isSendingRef.current.delete(sessionId)
   }, [])
+
+
+  // ── Recover stream state after page refresh ──
+  // Checks the Service Worker (primary) and localStorage (fallback) for
+  // any in-progress or completed stream data that was lost due to a page refresh.
+  // If found, reconstructs the assistant message so the response appears in the
+  // UI without needing to wait for the fetchMessages API response.
+  //
+  // Returns: { recovered: boolean, isActive: boolean }
+  //   recovered: true if stream state was found and applied
+  //   isActive:  true if the SW stream is STILL running (we subscribed to live events)
+  const recoverStreamState = useCallback(async (sessionId) => {
+    if (!sessionId) return { recovered: false, isActive: false }
+
+    // Don't recover if we already have messages for this session (not a fresh page load)
+    const existingMsgs = messagesCacheRef.current[sessionId] || []
+    if (existingMsgs.length > 0) {
+      console.log('[useChat] recoverStreamState: session', sessionId,
+        'already has', existingMsgs.length, 'messages \u2014 skipping recovery')
+      return { recovered: false, isActive: false }
+    }
+
+    console.log('[useChat] recoverStreamState: attempting recovery for session', sessionId)
+
+    // \u2500\u2500 PATH 1: Service Worker recovery (primary) \u2500\u2500
+    if (isStreamWorkerReady()) {
+      try {
+        const { state: swState, isActive } = await recoverStreamFromSW(sessionId)
+
+        if (swState && (swState.fullContent || (swState.toolCalls && swState.toolCalls.length > 0))) {
+          console.log('[useChat] recoverStreamState: SW recovery succeeded for session', sessionId,
+            '| content:', (swState.fullContent || '').length, 'chars',
+            '| tool_calls:', (swState.toolCalls || []).length,
+            '| isActive:', isActive,
+            '| done:', swState.done)
+
+          const toolCallsArr = Array.isArray(swState.toolCalls)
+            ? swState.toolCalls
+            : Object.values(swState.toolCalls || {})
+
+          // Build the recovered assistant message
+          const recoveredAssistantMsg = {
+            message_id: swState.doneData?.message_id || swState.assistantMsgId || `recovered_assistant_${Date.now()}`,
+            role: 'assistant',
+            content: swState.fullContent || '',
+            tool_calls: toolCallsArr,
+            isStreaming: isActive && !swState.done,
+            streaming_started_at: swState.startedAt,
+            generation_time: swState.startedAt
+              ? ((Date.now() - swState.startedAt) / 1000).toFixed(1)
+              : undefined,
+            created_at: new Date(swState.startedAt || Date.now()).toISOString(),
+            _recovered: true,
+          }
+
+          // Inject the recovered assistant message into the session cache.
+          // fetchMessages (called after this) will merge it with API data properly.
+          updateMessagesForSession(sessionId, prev => {
+            if (prev.some(m => m.content === recoveredAssistantMsg.content && m.role === 'assistant')) {
+              return prev
+            }
+            return [...prev, recoveredAssistantMsg]
+          })
+
+          // If stream is still active in the SW, subscribe to live events
+          if (isActive && !swState.done) {
+            console.log('[useChat] recoverStreamState: subscribing to active SW stream for', sessionId)
+
+            streamingSessionsRef.current.add(sessionId)
+            if (activeSessionRef.current === sessionId) {
+              setIsStreaming(true)
+            }
+
+            let fullContent = swState.fullContent || ''
+            let activeToolCalls = {}
+            for (const tc of toolCallsArr) {
+              activeToolCalls[tc.tool_use_id || `${tc.tool}_${Date.now()}`] = tc
+            }
+
+            const assistantMsgId = recoveredAssistantMsg.message_id
+            const streamingStartedAt = swState.startedAt || Date.now()
+
+            const unsubscribe = subscribeToStream(sessionId, (event) => {
+              const { type, data } = event
+
+              switch (type) {
+                case 'token':
+                  fullContent += (data.content || '')
+                  updateMessagesForSession(sessionId, prev =>
+                    prev.map(m =>
+                      m.message_id === assistantMsgId
+                        ? { ...m, content: fullContent }
+                        : m
+                    )
+                  )
+                  break
+
+                case 'tool_start': {
+                  const toolKey = data.tool_use_id || `${data.tool}_${Date.now()}`
+                  activeToolCalls[toolKey] = {
+                    tool_use_id: toolKey,
+                    tool: data.tool,
+                    input: data.input || {},
+                    status: 'running',
+                  }
+                  updateMessagesForSession(sessionId, prev =>
+                    prev.map(m =>
+                      m.message_id === assistantMsgId
+                        ? { ...m, tool_calls: Object.values(activeToolCalls) }
+                        : m
+                    )
+                  )
+                  break
+                }
+
+                case 'tool_result': {
+                  const toolKey = data.tool_use_id && activeToolCalls[data.tool_use_id]
+                    ? data.tool_use_id
+                    : Object.keys(activeToolCalls).find(k =>
+                        activeToolCalls[k].tool === data.tool && activeToolCalls[k].status === 'running'
+                      )
+                  if (toolKey && activeToolCalls[toolKey]) {
+                    activeToolCalls[toolKey] = {
+                      ...activeToolCalls[toolKey],
+                      result: data.result || {},
+                      status: 'done',
+                    }
+                  }
+                  updateMessagesForSession(sessionId, prev =>
+                    prev.map(m =>
+                      m.message_id === assistantMsgId
+                        ? { ...m, tool_calls: Object.values(activeToolCalls) }
+                        : m
+                    )
+                  )
+                  break
+                }
+
+                case 'done': {
+                  const generationTime = ((Date.now() - streamingStartedAt) / 1000).toFixed(1)
+                  const finalToolCalls = Object.values(activeToolCalls)
+
+                  updateMessagesForSession(sessionId, prev =>
+                    prev.map(m =>
+                      m.message_id === assistantMsgId
+                        ? {
+                            ...m,
+                            ...(data?.message_id ? { message_id: data.message_id } : {}),
+                            content: fullContent || m.content || '',
+                            isStreaming: false,
+                            tool_calls: finalToolCalls.length > 0 ? finalToolCalls : (m.tool_calls || []),
+                            generation_time: generationTime,
+                          }
+                        : m
+                    )
+                  )
+
+                  // Persist tool_calls for future page refreshes
+                  if (finalToolCalls.length > 0) {
+                    const currentMessages = messagesCacheRef.current[sessionId] || []
+                    const assistantMsgsBefore = currentMessages.filter(
+                      m => m.role === 'assistant' && m.message_id !== assistantMsgId
+                    ).length
+
+                    saveToolCalls(sessionId, {
+                      msgId:          data?.message_id ? String(data.message_id) : '',
+                      tempId:         assistantMsgId,
+                      contentText:    fullContent || '',
+                      positionIndex:  assistantMsgsBefore,
+                      toolCalls:      finalToolCalls,
+                      generationTime,
+                    }).then(() => evictOldRecords()).catch(() => {})
+                  }
+
+                  recentlyStreamedRef.current[sessionId] = Date.now()
+                  streamingSessionsRef.current.delete(sessionId)
+                  if (activeSessionRef.current === sessionId) {
+                    setIsStreaming(false)
+                  }
+
+                  clearStreamStateSW(sessionId)
+                  clearStreamingState(sessionId)
+                  unsubscribe()
+
+                  console.log('[useChat] recoverStreamState: SW stream completed for', sessionId,
+                    '| content:', fullContent.length, 'chars | tools:', Object.keys(activeToolCalls).length)
+                  break
+                }
+
+                case 'error':
+                  updateMessagesForSession(sessionId, prev =>
+                    prev.map(m =>
+                      m.message_id === assistantMsgId
+                        ? { ...m, content: fullContent || m.content || '', isStreaming: false, isError: true }
+                        : m
+                    )
+                  )
+                  streamingSessionsRef.current.delete(sessionId)
+                  if (activeSessionRef.current === sessionId) {
+                    setIsStreaming(false)
+                    setError(data.error || 'Stream error after recovery')
+                  }
+                  unsubscribe()
+                  break
+              }
+            })
+          } else {
+            // Stream already completed in SW \u2014 persist and clean up
+            if (toolCallsArr.length > 0) {
+              saveToolCalls(sessionId, {
+                msgId:         swState.doneData?.message_id ? String(swState.doneData.message_id) : '',
+                tempId:        swState.assistantMsgId || '',
+                contentText:   swState.fullContent || '',
+                positionIndex: 0,
+                toolCalls:     toolCallsArr,
+                generationTime: recoveredAssistantMsg.generation_time || '',
+              }).then(() => evictOldRecords()).catch(() => {})
+            }
+
+            recentlyStreamedRef.current[sessionId] = Date.now()
+            clearStreamStateSW(sessionId)
+          }
+
+          return { recovered: true, isActive: isActive && !swState.done }
+        }
+      } catch (err) {
+        console.warn('[useChat] recoverStreamState: SW recovery failed:', err.message)
+      }
+    }
+
+    // \u2500\u2500 PATH 2: localStorage streaming state recovery (fallback) \u2500\u2500
+    const streamingState = loadStreamingState(sessionId)
+    if (streamingState && (streamingState.fullContent || (streamingState.toolCalls && streamingState.toolCalls.length > 0))) {
+      console.log('[useChat] recoverStreamState: localStorage recovery for session', sessionId,
+        '| content:', (streamingState.fullContent || '').length, 'chars',
+        '| tool_calls:', (streamingState.toolCalls || []).length)
+
+      const toolCallsArr = streamingState.toolCalls || []
+      const recoveredAssistantMsg = {
+        message_id: streamingState.assistantMsgId || `recovered_assistant_${Date.now()}`,
+        role: 'assistant',
+        content: streamingState.fullContent || '',
+        tool_calls: toolCallsArr,
+        isStreaming: false,
+        generation_time: streamingState.streamingStartedAt
+          ? ((Date.now() - streamingState.streamingStartedAt) / 1000).toFixed(1)
+          : undefined,
+        created_at: new Date(streamingState.streamingStartedAt || Date.now()).toISOString(),
+        _recovered: true,
+      }
+
+      updateMessagesForSession(sessionId, prev => {
+        if (prev.some(m => m.content === recoveredAssistantMsg.content && m.role === 'assistant')) {
+          return prev
+        }
+        return [...prev, recoveredAssistantMsg]
+      })
+
+      // Persist to localStorage tool_calls store, then clear streaming state
+      if (toolCallsArr.length > 0) {
+        saveToolCalls(sessionId, {
+          msgId:         '',
+          tempId:        streamingState.assistantMsgId || '',
+          contentText:   streamingState.fullContent || '',
+          positionIndex: 0,
+          toolCalls:     toolCallsArr,
+          generationTime: recoveredAssistantMsg.generation_time || '',
+        }).then(() => {
+          clearStreamingState(sessionId)
+        }).catch(() => {})
+      } else {
+        clearStreamingState(sessionId)
+      }
+
+      return { recovered: true, isActive: false }
+    }
+
+    console.log('[useChat] recoverStreamState: no recovery data found for session', sessionId)
+    return { recovered: false, isActive: false }
+  }, [updateMessagesForSession])
+
 
   return {
     messages,
@@ -1445,5 +1825,6 @@ export function useChat() {
     setOnProjectStatusChange,
     setOnConflictQueue,
     cleanupSession,
+    recoverStreamState,
   }
 }

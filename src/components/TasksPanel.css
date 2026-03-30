@@ -109,6 +109,30 @@
 
 .panel-error-retry:hover { background: rgba(228,37,39,0.22); }
 
+/* Cancel error toast — dismiss button */
+.panel-error--cancel {
+  animation: fadeIn 0.2s ease;
+}
+.panel-error-dismiss {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border: none;
+  background: transparent;
+  color: #f08080;
+  font-size: 0.82rem;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: var(--transition-fast);
+  line-height: 1;
+}
+.panel-error-dismiss:hover {
+  background: rgba(228,37,39,0.18);
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ── Empty State ── */
 .panel-empty {
   display: flex;

@@ -1,7 +1,6 @@
-import React, { useEffect, useRef, useMemo } from 'react'
+import React, { useEffect, useRef, useMemo, useCallback } from 'react'
 import MessageBubble from './MessageBubble.jsx'
 import ChatInput from './ChatInput.jsx'
-import ChatQueue from './ChatQueue.jsx'
 import zenithLogo from '../assets/zenith.png'
 
 import './ChatArea.css'
@@ -42,20 +41,40 @@ function getDateKey(dateStr) {
 
 export default function ChatArea({
   messages: rawMessages, isStreaming, error, session, agentEvents, artifacts,
-  onSendMessage, onQueueMessage, onCancelStream, onClearError, user,
+  onSendMessage, onCancelStream, onClearError, user,
   tasksByMessage, onViewTasks,
-  queueItems, isQueueing, onClearQueueCompleted,
 }) {
   const bottomRef    = useRef(null)
   const containerRef = useRef(null)
 
+  const userAtBottomRef = useRef(true)
+
   // Ensure messages is always an array (defensive against backend format mismatches)
   const messages = Array.isArray(rawMessages) ? rawMessages : []
 
-  // Auto-scroll to bottom
+  // Track whether user has scrolled away from bottom
+  const handleScroll = useCallback(() => {
+    const el = containerRef.current
+    if (!el) return
+    const threshold = 150
+    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+    userAtBottomRef.current = isAtBottom
+  }, [])
+
+  // Auto-scroll to bottom when near bottom or new messages arrive
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (userAtBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages, isStreaming])
+
+  // Always scroll when a brand new message is added (length changes)
+  useEffect(() => {
+    if (messages.length > 0) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      userAtBottomRef.current = true
+    }
+  }, [messages.length])
 
   const isEmpty = messages.length === 0
 
@@ -115,7 +134,6 @@ export default function ChatArea({
           <div className="landing-input-wrap">
             <ChatInput
               onSend={onSendMessage}
-              onQueue={onQueueMessage}
               disabled={false}
               isGenerating={isStreaming}
               sessionTitle={session?.title}
@@ -129,7 +147,7 @@ export default function ChatArea({
            ══════════════════════════════════════════════ */
         <>
           {/* Messages */}
-          <div className="chat-messages" ref={containerRef}>
+          <div className="chat-messages" ref={containerRef} onScroll={handleScroll} role="log" aria-live="polite">
             <div className="messages-list">
               {messages.map((msg, idx) => {
                 // Guard: skip malformed messages that have neither an id nor a role
@@ -170,15 +188,6 @@ export default function ChatArea({
             <div ref={bottomRef} />
           </div>
 
-          {/* Chat Queue Display */}
-          {queueItems && queueItems.length > 0 && (
-            <ChatQueue
-              items={queueItems}
-              onClearCompleted={onClearQueueCompleted}
-              isQueueing={isQueueing}
-            />
-          )}
-
           {/* Stop Generation Button */}
           {isStreaming && (
             <div className="stop-generation-wrapper">
@@ -192,7 +201,6 @@ export default function ChatArea({
           {/* Bottom-pinned input */}
           <ChatInput
             onSend={onSendMessage}
-            onQueue={onQueueMessage}
             disabled={false}
             isGenerating={isStreaming}
             sessionTitle={session?.title}

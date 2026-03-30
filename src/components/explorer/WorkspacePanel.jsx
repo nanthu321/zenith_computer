@@ -48,7 +48,7 @@ function normalizeProjects(data) {
 }
 
 /* ── Project section (expandable folder in tree sidebar) ── */
-function ProjectSection({ name, isOpen, onToggle, onFileSelect, onFileDeleted, selectedFile, pendingCreate, onPendingCreateConsumed, onToast, fileTreeRef }) {
+function ProjectSection({ name, isOpen, onToggle, onFileSelect, onFileDeleted, selectedFile, pendingCreate, onPendingCreateConsumed, onToast, fileTreeRef, onCreateInProject }) {
   return (
     <div className="wsp-project-section">
       <div className="wsp-section-header" onClick={onToggle}>
@@ -56,10 +56,24 @@ function ProjectSection({ name, isOpen, onToggle, onFileSelect, onFileDeleted, s
         <span className="wsp-section-title" title={name}>{name}</span>
         <div className="wsp-section-actions" onClick={(e) => e.stopPropagation()}>
           {/* Buttons moved from filetree-root-actions */}
-          <button title="New file" onClick={() => fileTreeRef?.current?.triggerNewFile()} className="filetree-action-btn">
+          <button title="New file" onClick={() => {
+            // If FileTree is mounted (project expanded), use imperative ref directly.
+            // Otherwise, use the pendingCreate mechanism which also expands the project.
+            if (fileTreeRef?.current?.triggerNewFile) {
+              fileTreeRef.current.triggerNewFile();
+            } else {
+              onCreateInProject?.(name, "file");
+            }
+          }} className="filetree-action-btn">
             <svg width="15" height="15" viewBox="0 0 16 16"><path d="M10 1H4a1 1 0 00-1 1v12a1 1 0 001 1h8a1 1 0 001-1V4l-3-3z" fill="none" stroke="currentColor" strokeWidth="1.2"/><path d="M10 1v3h3M6 9h4M8 7v4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
           </button>
-          <button title="New folder" onClick={() => fileTreeRef?.current?.triggerNewFolder()} className="filetree-action-btn">
+          <button title="New folder" onClick={() => {
+            if (fileTreeRef?.current?.triggerNewFolder) {
+              fileTreeRef.current.triggerNewFolder();
+            } else {
+              onCreateInProject?.(name, "folder");
+            }
+          }} className="filetree-action-btn">
             <svg width="15" height="15" viewBox="0 0 16 16"><path d="M2 4a1 1 0 011-1h3l1.5 1.5H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1V4z" fill="none" stroke="currentColor" strokeWidth="1.2"/><path d="M6 8.5h4M8 6.5v4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
           </button>
           <button title="Refresh" onClick={() => fileTreeRef?.current?.triggerRefresh()} className="filetree-action-btn">
@@ -234,6 +248,13 @@ export default function WorkspacePanel() {
     setPendingCreate({ type: "folder", project: targetProject });
   }
 
+  function triggerCreateInProject(targetProject, createType) {
+    // Ensure the project is expanded so FileTree mounts
+    setExpandedProjects((prev) => new Set([...prev, targetProject]));
+    setActiveProject(targetProject);
+    setPendingCreate({ type: createType, project: targetProject });
+  }
+
   function handlePendingCreateConsumed() {
     setPendingCreate(null);
   }
@@ -365,6 +386,7 @@ export default function WorkspacePanel() {
                 onPendingCreateConsumed={handlePendingCreateConsumed}
                 onToast={handleDownloadToast}
                 fileTreeRef={getFileTreeRef(name)}
+                onCreateInProject={triggerCreateInProject}
               />
             ))
           )}

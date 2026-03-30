@@ -4,13 +4,11 @@
  * `/api/auth/theme` endpoint and smooth CSS variable transitions.
  *
  * Persistence strategy:
- *   1. localStorage ('zenith_theme') — synchronous, survives refresh,
- *      works even when the user is not logged in.
- *   2. Dedicated theme API (GET/PUT /api/auth/theme) — async,
- *      syncs across devices.
+ *   Server-only — theme preference is stored in the backend database
+ *   via GET/PUT /api/auth/theme. No localStorage is used.
  *
- * On page load the theme is read from localStorage first (instant,
- * no flash), then reconciled with the server once the API responds.
+ * On page load the theme defaults to "dark" until the server responds
+ * with the user's saved preference (avoids flash for most users).
  *
  * "system" means follow the OS preference; the resolved (applied)
  * theme is always either "dark" or "light" in the DOM.
@@ -21,9 +19,11 @@ import { AuthContext } from './AuthContext.jsx'
 
 export const ThemeContext = createContext(null)
 
-const LOCAL_STORAGE_KEY = 'zenith_theme'
 const THEMES = { DARK: 'dark', LIGHT: 'light', SYSTEM: 'system' }
 const ALLOWED = new Set([THEMES.DARK, THEMES.LIGHT, THEMES.SYSTEM])
+
+/** Default preference used before the server responds */
+const DEFAULT_PREFERENCE = THEMES.DARK
 
 /* ── helpers ───────────────────────────────────────────── */
 
@@ -40,30 +40,6 @@ function resolveTheme(pref) {
   return THEMES.DARK
 }
 
-/** Read theme preference from localStorage (synchronous) */
-function readLocalTheme() {
-  try {
-    const val = localStorage.getItem(LOCAL_STORAGE_KEY)
-    if (ALLOWED.has(val)) return val
-  } catch (_) { /* localStorage may be unavailable */ }
-  return null
-}
-
-/** Write theme preference to localStorage */
-function writeLocalTheme(pref) {
-  try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, pref)
-  } catch (_) { /* ignore */ }
-}
-
-/** Determine initial preference on first render */
-function getInitialPreference() {
-  const local = readLocalTheme()
-  if (local) return local
-  // No saved preference — default to system
-  return THEMES.SYSTEM
-}
-
 /** Apply the resolved theme to the DOM */
 function applyTheme(resolved) {
   document.documentElement.setAttribute('data-theme', resolved)
@@ -75,7 +51,14 @@ function applyTheme(resolved) {
 
 /* ── server API helpers ────────────────────────────────── */
 
-/** GET /api/auth/theme → returns preference string or null */
+/**
+ * GET /api/auth/theme
+ * Returns the authenticated user's theme preference string, or null on failure.
+ *
+ * Success (200): { success: true, data: { theme: "dark" } }
+ * Error  (404):  User not found
+ * Error  (500):  Internal server error
+ */
 async function fetchServerTheme() {
   try {
     const data = await apiFetch('/api/auth/theme')
@@ -87,37 +70,54 @@ async function fetchServerTheme() {
   return null
 }
 
-/** PUT /api/auth/theme — fire-and-forget */
-function saveServerTheme(pref) {
+/**
+ * PUT /api/auth/theme
+ * Persists the user's theme preference to the database.
+ *
+ * Request:  { theme: "dark" | "light" | "system" }
+ * Success (200): { success: true, data: { message: "Theme updated", theme: "dark" } }
+ * Error  (400):  Missing/invalid theme field
+ * Error  (404):  User not found
+ * Error  (500):  Failed to update theme
+ *
+ * Returns a promise that resolves to the saved theme or null on failure.
+ */
+async function saveServerTheme(pref) {
   console.log(`[ThemeContext] 📡 PUT /api/auth/theme — { theme: "${pref}" }`)
-  apiFetch('/api/auth/theme', {
-    method: 'PUT',
-    body: JSON.stringify({ theme: pref }),
-  }).then(() => {
+  try {
+    const data = await apiFetch('/api/auth/theme', {
+      method: 'PUT',
+      body: JSON.stringify({ theme: pref }),
+    })
     console.log(`[ThemeContext] ✅ Theme persisted to server: "${pref}"`)
-  }).catch((err) => {
+    return data?.theme || pref
+  } catch (err) {
     console.error(`[ThemeContext] ❌ Failed to persist theme: ${err.message}`)
-  })
+    return null
+  }
 }
 
 /* ── provider ──────────────────────────────────────────── */
 
 export function ThemeProvider({ children }) {
-  // Access auth state — only fetch server theme when user is logged in
+  // Access auth state — only fetch/save server theme when user is logged in
   const auth = useContext(AuthContext)
 
   // preference = what the user chose (dark | light | system)
+  // Defaults to DARK until server responds
   const [preference, setPreferenceState] = useState(() => {
-    const pref = getInitialPreference()
-    applyTheme(resolveTheme(pref))
-    return pref
+    applyTheme(resolveTheme(DEFAULT_PREFERENCE))
+    return DEFAULT_PREFERENCE
   })
 
   // resolved = what is actually applied to the DOM (dark | light)
-  const [resolved, setResolved] = useState(() => resolveTheme(preference))
+  const [resolved, setResolved] = useState(() => resolveTheme(DEFAULT_PREFERENCE))
 
-  // Track whether we've reconciled with the server
+  // Track whether we've fetched the theme from the server
   const reconciledRef = useRef(false)
+
+  // Track if initial server fetch is in progress (prevents flash)
+  const [serverLoaded, setServerLoaded] = useState(false)
 
   const isDark  = resolved === THEMES.DARK
   const isLight = resolved === THEMES.LIGHT
@@ -132,10 +132,6 @@ export function ThemeProvider({ children }) {
     setResolved(newResolved)
     applyTheme(newResolved)
 
-    // Persist locally (always — works even when not logged in)
-    writeLocalTheme(newPref)
-    console.log(`[ThemeContext] 💾 Saved to localStorage: "${newPref}"`)
-
     // Persist to server only when user is authenticated
     if (auth?.token) {
       saveServerTheme(newPref)
@@ -148,12 +144,13 @@ export function ThemeProvider({ children }) {
     setTheme(next)
   }, [isDark, setTheme])
 
-  // On mount (or when user logs in): reconcile with server
-  // Only fetch from server when user is authenticated to avoid 401 errors
+  // On mount (or when user logs in): fetch theme from server
+  // Only fetch when user is authenticated to avoid 401 errors
   useEffect(() => {
     if (!auth?.token) {
       // Not logged in — reset reconciled flag so we fetch when user logs in
       reconciledRef.current = false
+      setServerLoaded(false)
       return
     }
     if (reconciledRef.current) return
@@ -166,8 +163,8 @@ export function ThemeProvider({ children }) {
         const r = resolveTheme(serverPref)
         setResolved(r)
         applyTheme(r)
-        writeLocalTheme(serverPref)
       }
+      setServerLoaded(true)
     })
   }, [auth?.token])
 
@@ -197,6 +194,7 @@ export function ThemeProvider({ children }) {
       isLight,
       toggleTheme,
       setTheme,
+      serverLoaded,           // true once server theme has been fetched
       THEMES,
     }}>
       {children}

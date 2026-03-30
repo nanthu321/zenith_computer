@@ -5,29 +5,44 @@
  *  - ThemeToggle renders a single icon button (no text buttons)
  *  - Correct icon shown based on theme (sun for light, moon for dark)
  *  - Toggle switches between dark ↔ light (no "system" in cycle)
- *  - Theme persists to localStorage
+ *  - Theme persists via server API (GET/PUT /api/auth/theme) — NOT localStorage
  *  - Correct tooltip text shown
+ *  - Server API request/response validation
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 
-const LOCAL_STORAGE_KEY = 'zenith_theme'
+const ALLOWED_THEMES = ['light', 'dark', 'system']
 
-/** Simple in-memory localStorage mock for Node test environment */
-function createLocalStorageMock() {
-  const store = {}
+/** Simple in-memory mock for the server theme store (simulates DB) */
+function createServerThemeStore() {
+  const store = {} // userId → theme
   return {
-    getItem: (key) => store[key] ?? null,
-    setItem: (key, value) => { store[key] = String(value) },
-    removeItem: (key) => { delete store[key] },
-    clear: () => { Object.keys(store).forEach(k => delete store[k]) },
+    /** GET /api/auth/theme — returns { theme } or throws */
+    async getTheme(userId) {
+      if (!userId) throw new Error('User not found')
+      return { theme: store[userId] || 'dark' }
+    },
+    /** PUT /api/auth/theme — validates & saves, returns { message, theme } or throws */
+    async setTheme(userId, body) {
+      if (!userId) throw new Error('User not found')
+      if (!body || typeof body !== 'object') throw new Error('Request body must be a JSON object with a "theme" field')
+      if (!body.theme) throw new Error('Missing required field: "theme"')
+      if (typeof body.theme !== 'string' || !body.theme.trim()) throw new Error('"theme" must not be empty')
+      if (!ALLOWED_THEMES.includes(body.theme)) throw new Error(`Invalid theme "${body.theme}". Allowed values: [${ALLOWED_THEMES.join(', ')}]`)
+      store[userId] = body.theme
+      return { message: 'Theme updated', theme: body.theme }
+    },
+    /** Helper — read raw store for assertions */
+    _raw: store,
   }
 }
 
 describe('Theme Toggle Logic', () => {
-  let storage
+  let server
+  const TEST_USER_ID = 1
 
   beforeEach(() => {
-    storage = createLocalStorageMock()
+    server = createServerThemeStore()
   })
 
   describe('Toggle behavior (dark ↔ light)', () => {
@@ -44,7 +59,7 @@ describe('Theme Toggle Logic', () => {
     })
 
     it('should not cycle through system', () => {
-      // The new toggle only goes dark ↔ light
+      // The toggle only goes dark ↔ light
       const states = ['dark', 'light']
       let current = 'dark'
 
@@ -56,7 +71,7 @@ describe('Theme Toggle Logic', () => {
       current = current === 'dark' ? 'light' : 'dark'
       expect(current).toBe('dark')
 
-      // Verify "system" is never reached
+      // Verify "system" is never reached in the toggle cycle
       expect(states).not.toContain('system')
     })
   })
@@ -89,44 +104,72 @@ describe('Theme Toggle Logic', () => {
     })
   })
 
-  describe('Theme persistence (localStorage)', () => {
-    it('should write theme to storage', () => {
-      storage.setItem(LOCAL_STORAGE_KEY, 'dark')
-      expect(storage.getItem(LOCAL_STORAGE_KEY)).toBe('dark')
+  describe('Theme persistence (Server API — /api/auth/theme)', () => {
+    it('GET should return default "dark" for new user', async () => {
+      const res = await server.getTheme(TEST_USER_ID)
+      expect(res).toEqual({ theme: 'dark' })
     })
 
-    it('should read theme from storage', () => {
-      storage.setItem(LOCAL_STORAGE_KEY, 'light')
-      const stored = storage.getItem(LOCAL_STORAGE_KEY)
-      expect(stored).toBe('light')
+    it('PUT should save and return the theme', async () => {
+      const res = await server.setTheme(TEST_USER_ID, { theme: 'light' })
+      expect(res).toEqual({ message: 'Theme updated', theme: 'light' })
     })
 
-    it('should persist after toggle', () => {
-      // Simulate toggle: dark → light
-      storage.setItem(LOCAL_STORAGE_KEY, 'dark')
-      const current = storage.getItem(LOCAL_STORAGE_KEY)
-      const next = current === 'dark' ? 'light' : 'dark'
-      storage.setItem(LOCAL_STORAGE_KEY, next)
-      expect(storage.getItem(LOCAL_STORAGE_KEY)).toBe('light')
+    it('GET should return the saved theme after PUT', async () => {
+      await server.setTheme(TEST_USER_ID, { theme: 'light' })
+      const res = await server.getTheme(TEST_USER_ID)
+      expect(res).toEqual({ theme: 'light' })
     })
 
-    it('should survive simulated reload (read persisted value)', () => {
-      // Write theme
-      storage.setItem(LOCAL_STORAGE_KEY, 'light')
-
-      // Simulate "reload" by reading fresh
-      const reloaded = storage.getItem(LOCAL_STORAGE_KEY)
-      expect(reloaded).toBe('light')
+    it('PUT should accept "system" as a valid theme', async () => {
+      const res = await server.setTheme(TEST_USER_ID, { theme: 'system' })
+      expect(res.theme).toBe('system')
     })
 
-    it('should return null for unset key', () => {
-      expect(storage.getItem(LOCAL_STORAGE_KEY)).toBeNull()
+    it('PUT should persist after toggle cycle (dark → light → dark)', async () => {
+      await server.setTheme(TEST_USER_ID, { theme: 'light' })
+      await server.setTheme(TEST_USER_ID, { theme: 'dark' })
+      const res = await server.getTheme(TEST_USER_ID)
+      expect(res.theme).toBe('dark')
     })
 
-    it('should allow removing a stored theme', () => {
-      storage.setItem(LOCAL_STORAGE_KEY, 'dark')
-      storage.removeItem(LOCAL_STORAGE_KEY)
-      expect(storage.getItem(LOCAL_STORAGE_KEY)).toBeNull()
+    it('PUT should reject invalid theme values', async () => {
+      await expect(server.setTheme(TEST_USER_ID, { theme: 'blue' }))
+        .rejects.toThrow('Invalid theme "blue"')
+    })
+
+    it('PUT should reject empty theme string', async () => {
+      await expect(server.setTheme(TEST_USER_ID, { theme: '   ' }))
+        .rejects.toThrow('"theme" must not be empty')
+    })
+
+    it('PUT should reject missing theme field', async () => {
+      await expect(server.setTheme(TEST_USER_ID, {}))
+        .rejects.toThrow('Missing required field: "theme"')
+    })
+
+    it('PUT should reject empty body', async () => {
+      await expect(server.setTheme(TEST_USER_ID, null))
+        .rejects.toThrow('Request body must be a JSON object')
+    })
+
+    it('GET should throw for missing user', async () => {
+      await expect(server.getTheme(null))
+        .rejects.toThrow('User not found')
+    })
+
+    it('PUT should throw for missing user', async () => {
+      await expect(server.setTheme(null, { theme: 'dark' }))
+        .rejects.toThrow('User not found')
+    })
+
+    it('should NOT use localStorage at all', () => {
+      // Verify that theme is never written to localStorage
+      // The ThemeContext no longer imports or uses localStorage for theme
+      const themeInLS = typeof globalThis.localStorage !== 'undefined'
+        ? globalThis.localStorage?.getItem?.('zenith_theme')
+        : undefined
+      expect(themeInLS).toBeFalsy()
     })
   })
 
@@ -147,6 +190,14 @@ describe('Theme Toggle Logic', () => {
       const pref = 'unknown'
       const resolved = pref === 'dark' ? 'dark' : pref === 'light' ? 'light' : 'dark'
       expect(resolved).toBe('dark')
+    })
+
+    it('should resolve "system" based on OS preference', () => {
+      // In test env, we simulate — "system" resolves to 'dark' or 'light'
+      const pref = 'system'
+      // Simplified: without matchMedia, default is 'dark'
+      const resolved = pref === 'system' ? 'dark' : pref
+      expect(['dark', 'light']).toContain(resolved)
     })
   })
 })

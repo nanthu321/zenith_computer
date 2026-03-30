@@ -230,6 +230,7 @@ export async function downloadFile(project, filePath, fileName, callbacks = {}) 
 /**
  * Download a folder as a .zip file.
  * Recursively fetches all files maintaining folder structure.
+ * The folder contents are placed inside a root directory named after the folder.
  *
  * @param {string} project - Project name
  * @param {string} folderPath - Path to the folder within the project
@@ -243,33 +244,29 @@ export async function downloadFolderAsZip(project, folderPath, folderName, callb
     onStart?.();
 
     const zip = new JSZip();
+    // Create a root folder inside the ZIP so extraction produces a single directory
+    const rootFolder = zip.folder(folderName);
     const files = [];
 
     // Recursively collect all files in the folder
     await collectFiles(project, folderPath, "", files, onProgress);
 
     if (files.length === 0) {
-      // Empty folder — still create an empty zip
-      zip.folder(folderName);
+      // Empty folder — rootFolder already created above, ZIP will contain an empty dir
     } else {
-      // Add all files to the zip
+      // Add all files to the zip under the root folder
       let processed = 0;
       for (const file of files) {
         try {
-          const data = await workspaceApi.readFile(project, file.fullPath);
-          let content;
-          if (typeof data === "string") {
-            content = data;
-          } else if (data?.content !== undefined) {
-            content = typeof data.content === "string"
-              ? data.content
-              : JSON.stringify(data.content, null, 2);
+          const content = await readFileForZip(project, file.fullPath, file.name);
+          // Add with correct binary flag based on file type
+          if (isBinaryFile(file.name)) {
+            rootFolder.file(file.relativePath, content, { binary: true });
           } else {
-            content = JSON.stringify(data, null, 2);
+            rootFolder.file(file.relativePath, content);
           }
-          zip.file(file.relativePath, content);
         } catch (err) {
-          // Skip files that can't be read (e.g., binary files)
+          // Skip files that can't be read
           console.warn(`[downloadUtils] Skipping file ${file.fullPath}:`, err.message);
         }
         processed++;
@@ -310,6 +307,9 @@ export async function downloadFolderAsZip(project, folderPath, folderName, callb
  * First tries the backend download endpoint, falls back to
  * client-side ZIP creation.
  *
+ * The ZIP always contains a root folder named after the project,
+ * so extracting produces: projectName/ → files...
+ *
  * @param {string} project - Project name
  * @param {object} callbacks - { onStart, onProgress, onSuccess, onError }
  */
@@ -328,29 +328,26 @@ export async function downloadProjectAsZip(project, callbacks = {}) {
 
     // Fallback: client-side ZIP creation
     const zip = new JSZip();
+    // Create a root folder inside the ZIP so extraction produces a single directory
+    const rootFolder = zip.folder(project);
     const files = [];
 
     // Collect all files from root
     await collectFiles(project, "", "", files, onProgress);
 
     if (files.length === 0) {
-      zip.folder(project);
+      // rootFolder already exists — ZIP will contain an empty project directory
     } else {
       let processed = 0;
       for (const file of files) {
         try {
-          const data = await workspaceApi.readFile(project, file.fullPath);
-          let content;
-          if (typeof data === "string") {
-            content = data;
-          } else if (data?.content !== undefined) {
-            content = typeof data.content === "string"
-              ? data.content
-              : JSON.stringify(data.content, null, 2);
+          const content = await readFileForZip(project, file.fullPath, file.name);
+          // Add with correct binary flag based on file type
+          if (isBinaryFile(file.name)) {
+            rootFolder.file(file.relativePath, content, { binary: true });
           } else {
-            content = JSON.stringify(data, null, 2);
+            rootFolder.file(file.relativePath, content);
           }
-          zip.file(file.relativePath, content);
         } catch (err) {
           console.warn(`[downloadUtils] Skipping file ${file.fullPath}:`, err.message);
         }
@@ -382,6 +379,50 @@ export async function downloadProjectAsZip(project, callbacks = {}) {
 // ═══════════════════════════════════════════════════════════════
 
 /**
+ * Read a file's content for ZIP inclusion.
+ * Handles both text and binary files correctly.
+ * For binary files, attempts direct blob fetch; for text files, uses the API.
+ *
+ * @param {string} project - Project name
+ * @param {string} filePath - Full path within the project
+ * @param {string} fileName - File name (for extension-based binary detection)
+ * @returns {Promise<string|Uint8Array>} Content suitable for JSZip
+ */
+async function readFileForZip(project, filePath, fileName) {
+  // For binary files, try fetching as a blob first
+  if (isBinaryFile(fileName)) {
+    try {
+      const headers = buildDownloadHeaders({ Accept: "application/octet-stream" });
+      if (headers) {
+        const url = `/api/workspace/projects/${encodeURIComponent(project)}/file?path=${encodeURIComponent(filePath)}`;
+        const res = await fetch(url, { headers });
+        if (res.ok) {
+          const blob = await res.blob();
+          const arrayBuffer = await blob.arrayBuffer();
+          return new Uint8Array(arrayBuffer);
+        }
+      }
+    } catch (_) {
+      // Fall through to text-based read
+    }
+  }
+
+  // Text file or binary fetch failed — use workspace API
+  const data = await workspaceApi.readFile(project, filePath);
+  let content;
+  if (typeof data === "string") {
+    content = data;
+  } else if (data?.content !== undefined) {
+    content = typeof data.content === "string"
+      ? data.content
+      : JSON.stringify(data.content, null, 2);
+  } else {
+    content = JSON.stringify(data, null, 2);
+  }
+  return content;
+}
+
+/**
  * Recursively collect all file entries from a directory.
  */
 async function collectFiles(project, basePath, relativePath, result, onProgress) {
@@ -396,7 +437,24 @@ async function collectFiles(project, basePath, relativePath, result, onProgress)
         entry.type === "dir" ||
         entry.is_directory === true;
 
-      const fullPath = basePath ? `${basePath}/${name}` : name;
+      // Build the correct full path for this entry.
+      // The API may return:
+      //   a) No path → build from basePath + name
+      //   b) A relative path (just the name) → build from basePath + name
+      //   c) A full path already prefixed with basePath → use as-is
+      // This prevents duplicate path segments like "src/utils/utils"
+      const parentPrefix = basePath ? `${basePath}/` : "";
+      let fullPath;
+      if (entry.path && entry.path.startsWith(parentPrefix) && entry.path !== name) {
+        // API returned a full path that already includes the parent prefix
+        fullPath = entry.path;
+      } else {
+        // Build path from basePath + name (safest default)
+        fullPath = basePath ? `${basePath}/${name}` : name;
+      }
+
+      // Build relative path for ZIP structure by stripping the basePath prefix
+      // and prepending the relativePath context
       const relPath = relativePath ? `${relativePath}/${name}` : name;
 
       if (isDir) {
@@ -475,6 +533,7 @@ async function tryDirectFileDownload(project, filePath, fileName) {
 /**
  * Try to use the backend download endpoint.
  * Returns true if successful, false if unavailable.
+ * Validates that the response is actually a ZIP file (not an HTML error page).
  */
 async function tryBackendDownload(project) {
   try {
@@ -489,6 +548,27 @@ async function tryBackendDownload(project) {
 
     const blob = await res.blob();
     if (blob.size === 0) return false;
+
+    // Validate the response is actually a ZIP file.
+    // ZIP files start with the magic bytes "PK" (0x50 0x4B).
+    // HTML error pages from the backend would start with "<" (0x3C).
+    const contentType = res.headers.get("content-type") || "";
+    const isZipContentType = contentType.includes("zip") || contentType.includes("octet-stream");
+
+    if (!isZipContentType) {
+      // Check magic bytes as a fallback
+      try {
+        const header = await blob.slice(0, 4).arrayBuffer();
+        const bytes = new Uint8Array(header);
+        // ZIP magic: PK\x03\x04 or PK\x05\x06 (empty archive) or PK\x07\x08
+        if (bytes[0] !== 0x50 || bytes[1] !== 0x4B) {
+          console.warn("[downloadUtils] Backend download returned non-ZIP data, falling back to client-side ZIP");
+          return false;
+        }
+      } catch (_) {
+        return false;
+      }
+    }
 
     triggerBlobDownload(blob, `${project}.zip`);
     return true;

@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.js'
 import { useSessions } from '../hooks/useSessions.js'
-import { useChat } from '../hooks/useChat.js'
-import { useChatQueue } from '../hooks/useChatQueue.js'
+import { useChatContext } from '../context/ChatContext.jsx'
 import { useTasks } from '../hooks/useTasks.js'
 import { useUnreadSessions } from '../hooks/useNotifications.js'
 import Sidebar from '../components/Sidebar.jsx'
@@ -84,20 +83,17 @@ export default function ChatPage() {
     createSession, deleteSession, deleteEmptySessions, updateSessionTitle, touchSession
   } = useSessions()
 
+  // ── FIX: Use ChatContext instead of local useChat() ──
+  // useChat state now lives in ChatProvider (above <Routes> in App.jsx).
+  // This means the SSE stream connection, message caches, abort controllers,
+  // and all streaming refs persist even when ChatPage unmounts during navigation.
   const {
     messages, isStreaming, error: chatError,
     agentEvents, artifacts,
     fetchMessages, sendMessage, cancelStream, setError: setChatError,
     setActiveSession, isSessionStreaming, setOnBackgroundComplete, setOnProjectStatusChange,
-    setOnConflictQueue, cleanupSession
-  } = useChat()
-
-  const {
-    isQueueing, queueError,
-    addToQueue, getSessionQueue,
-    clearCompleted: clearQueueCompleted, cleanupQueue, setActiveQueueSession,
-    setQueueError,
-  } = useChatQueue()
+    setOnConflictQueue, cleanupSession, recoverStreamState
+  } = useChatContext()
 
   const { toast, ToastPortal } = useToast()
 
@@ -158,40 +154,17 @@ export default function ChatPage() {
     })
   }, [setOnBackgroundComplete, toast, addUnreadSession, markSessionAsRead])
 
-  // Register 409 Conflict auto-queue callback
-  // When /send returns 409 (another prompt already running), useChat will
-  // call this callback to automatically queue the message instead.
+  // Register 409 Conflict callback
+  // When /send returns 409 (another prompt already running), show a toast
   useEffect(() => {
     setOnConflictQueue((sessionId, message) => {
-      console.log('[ChatPage] 409 auto-queue: session', sessionId, '| message:', message.substring(0, 60))
-
-      addToQueue(sessionId, message)
-        .then((item) => {
-          if (item) {
-            toast(
-              `Message auto-queued (#${item.queuePosition}) — another prompt is still running`,
-              {
-                title: 'Auto-Queued',
-                type: 'info',
-                duration: 5000,
-              }
-            )
-          }
-        })
-        .catch((err) => {
-          console.error('[ChatPage] 409 auto-queue failed:', err)
-          // If the backend doesn't support the /queue endpoint, show a
-          // friendlier message instead of the raw backend error.
-          const isUnsupported = (err.message || '').toLowerCase().includes('invalid chat endpoint')
-          toast.error(
-            isUnsupported
-              ? 'Please wait for the current response to finish before sending another message.'
-              : 'Could not queue message: ' + (err.message || 'Unknown error'),
-            { duration: 5000 }
-          )
-        })
+      console.log('[ChatPage] 409 conflict: session', sessionId, '| message:', message.substring(0, 60))
+      toast.error(
+        'Please wait for the current response to finish before sending another message.',
+        { duration: 5000 }
+      )
     })
-  }, [setOnConflictQueue, addToQueue, toast])
+  }, [setOnConflictQueue, toast])
 
   // ── Initial load: Fetch sessions, validate restored active session ──
   useEffect(() => {
@@ -201,6 +174,19 @@ export default function ChatPage() {
       if (cancelled) return
 
       const restoredId = loadActiveSessionId()
+
+      // ── STREAM-SAFE GUARD ──
+      // If the restored session is currently streaming, do NOT clear or
+      // override the active session. The stream is alive in the ChatContext
+      // and the activeSessionId effect already synced state on mount.
+      // Any clearance here would briefly set activeSessionRef.current = null,
+      // causing token updates to stop reaching React state.
+      if (restoredId && isSessionStreaming(restoredId)) {
+        console.log('[ChatPage] Initial load: session', restoredId,
+          'is currently streaming — preserving without interference')
+        initialLoadDoneRef.current = true
+        return
+      }
 
       if (!data || data.length === 0) {
         // No sessions at all — clear any stale active session ID
@@ -250,6 +236,11 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!activeSessionId) {
+      // No active session selected (e.g. user clicked "New Chat").
+      // Clear the active session in the chat context. If a stream IS running
+      // on a different session, it continues in the background — tokens still
+      // accumulate in the cache. When the user switches back to that session,
+      // setActiveSession re-syncs React state from the cache.
       setActiveSession(null)
       return
     }
@@ -275,38 +266,33 @@ export default function ChatPage() {
       return
     }
 
-    // Step 4: Fetch from backend API to ensure UI is synced with server
+    // Step 4: Attempt stream recovery from Service Worker or localStorage.
+    // On page refresh, the SW may still be streaming (or have completed).
+    // Recovery injects the accumulated response into the message cache BEFORE
+    // fetchMessages runs, so the user sees the response immediately.
+    // After recovery, fetchMessages still runs to merge in any API data
+    // (e.g. user messages the backend persisted).
     const sid = activeSessionId
-    fetchMessages(sid).then((result) => {
-      if (result && result.length > 0) {
-        fetchedSessionsRef.current.add(sid)
-        console.log('[ChatPage] Fetched', result.length, 'messages for session', sid)
+    recoverStreamState(sid).then(({ recovered, isActive }) => {
+      if (recovered) {
+        console.log('[ChatPage] Stream recovery succeeded for session', sid,
+          '| isActive:', isActive)
+        // If the SW stream is still active, skip fetchMessages entirely
+        // (the subscription in recoverStreamState handles live updates).
+        if (isActive) return
       }
+
+      // Step 5: Fetch from backend API to ensure UI is synced with server
+      return fetchMessages(sid).then((result) => {
+        if (result && result.length > 0) {
+          fetchedSessionsRef.current.add(sid)
+          console.log('[ChatPage] Fetched', result.length, 'messages for session', sid)
+        }
+      })
     }).catch((err) => {
-      console.warn('[ChatPage] fetchMessages failed for', sid, ':', err.message, '— will retry on next switch')
+      console.warn('[ChatPage] Recovery/fetchMessages failed for', sid, ':', err.message, '\u2014 will retry on next switch')
     })
-  }, [activeSessionId, setActiveSession, fetchMessages, isSessionStreaming])
-
-  // ── Sync queue session tracking when activeSessionId changes ──
-  useEffect(() => {
-    setActiveQueueSession(activeSessionId || null)
-  }, [activeSessionId, setActiveQueueSession])
-
-  // ── Show toast on queue errors ──
-  useEffect(() => {
-    if (queueError) {
-      // If the backend doesn't support the /queue endpoint, show a
-      // friendlier message instead of the raw backend error.
-      const isUnsupported = (queueError || '').toLowerCase().includes('invalid chat endpoint')
-      toast.error(
-        isUnsupported
-          ? 'Message queuing is not available. Please wait for the current response to finish.'
-          : queueError,
-        { duration: 5000 }
-      )
-      setQueueError(null)
-    }
-  }, [queueError, toast, setQueueError])
+  }, [activeSessionId, setActiveSession, fetchMessages, isSessionStreaming, recoverStreamState])
 
   useEffect(() => {
     if (sidebarTab === SIDEBAR_TABS.TASKS)    fetchTasks()
@@ -317,15 +303,62 @@ export default function ChatPage() {
   // Watches the current messages for completed `schedule_task` tool results.
   // When found, links the task → the assistant message that triggered it
   // so the chat UI can show a "Task Scheduled ✅" badge on the correct message.
+  //
+  // IMPORTANT: Only NEW messages from the SSE stream should trigger addTask()
+  // and toast notifications. Historical messages loaded from the API should
+  // only populate the tasksByMessage badge map (no addTask, no toast).
+  // This prevents "default" tasks from being re-injected from old chat history.
   const processedTaskToolsRef = useRef(new Set()) // Tracks already-processed tool_use_ids
 
-  // We use `messages` already destructured from useChat() above.
+  // We use `messages` already destructured from useChatContext() above.
   const prevMessagesLenRef = useRef(0)
+  // Tracks whether the session's messages have been fully loaded from the API.
+  // ALL messages present before the user sends a new prompt are "historical".
+  // Only messages that arrive AFTER this flag is set (via SSE stream) should
+  // trigger addTask() + toast. This prevents old chat history from creating
+  // phantom tasks in the sidebar.
+  const sessionStabilizedRef = useRef(false)
+  const stabilizeTimerRef = useRef(null)
+
+  // ── Reset historical message tracking when session changes ──
+  // When switching sessions, the message list resets. We mark the session
+  // as NOT stabilized — all messages arriving in the first ~2 seconds are
+  // treated as historical (cache restore + API fetch both land in this window).
+  useEffect(() => {
+    sessionStabilizedRef.current = false
+    prevMessagesLenRef.current = 0
+    // Don't clear processedTaskToolsRef — tool_use_ids are globally unique
+
+    // Clear any pending stabilize timer from the previous session
+    if (stabilizeTimerRef.current) {
+      clearTimeout(stabilizeTimerRef.current)
+      stabilizeTimerRef.current = null
+    }
+
+    // After a short delay (enough for cache restore + API fetch to land),
+    // mark the session as stabilized. Any messages arriving AFTER this
+    // point are genuinely new (from the SSE stream).
+    if (activeSessionId) {
+      stabilizeTimerRef.current = setTimeout(() => {
+        sessionStabilizedRef.current = true
+        // Snapshot all current message IDs as historical
+        console.log('[ChatPage] Session stabilized — future schedule_task results will trigger addTask')
+      }, 3000) // 3 seconds covers cache restore + fetchMessages round-trip
+    }
+
+    return () => {
+      if (stabilizeTimerRef.current) {
+        clearTimeout(stabilizeTimerRef.current)
+        stabilizeTimerRef.current = null
+      }
+    }
+  }, [activeSessionId])
 
   useEffect(() => {
     // Only run when message count changes (new messages arrived)
     const currentMsgs = Array.isArray(messages) ? messages : []
     if (currentMsgs.length === prevMessagesLenRef.current) return
+
     prevMessagesLenRef.current = currentMsgs.length
 
     currentMsgs.forEach(msg => {
@@ -348,37 +381,47 @@ export default function ChatPage() {
         if (!taskId) return
 
         const msgId = String(msg.message_id)
-        console.log('[ChatPage] Detected schedule_task result — task:', taskId, '| msgId:', msgId)
 
-        // Register task in local state → shows badge on message
+        // Always populate the badge map (shows "Task Scheduled ✅" on message)
         setTasksByMessage(prev => ({
           ...prev,
           [msgId]: taskData,
         }))
 
-        // Add task to the tasks list immediately (no re-fetch needed)
-        addTask(taskData)
+        // Only trigger addTask + toast for GENUINELY NEW messages from SSE stream.
+        // Before the session is stabilized (first ~3s), ALL messages are treated
+        // as historical — they came from cache restore or API fetch, not from
+        // a live SSE stream. This prevents old schedule_task results from
+        // creating phantom tasks in the task list.
+        if (sessionStabilizedRef.current) {
+          console.log('[ChatPage] Detected NEW schedule_task result — task:', taskId, '| msgId:', msgId)
 
-        // Show toast notification about the new task
-        toast(
-          `Task "${taskData.description || taskId}" has been scheduled ✅`,
-          {
-            title: 'Task Created',
-            type: 'success',
-            duration: 6000,
-            action: {
-              label: 'View Tasks',
-              onClick: () => {
-                setSidebarTab(SIDEBAR_TABS.TASKS)
-                setMobileSidebarOpen(false)
+          // Add task to the tasks list immediately (no re-fetch needed)
+          addTask(taskData)
+
+          // Show toast notification about the new task
+          toast(
+            `Task "${taskData.description || taskId}" has been scheduled ✅`,
+            {
+              title: 'Task Created',
+              type: 'success',
+              duration: 6000,
+              action: {
+                label: 'View Tasks',
+                onClick: () => {
+                  setSidebarTab(SIDEBAR_TABS.TASKS)
+                  setMobileSidebarOpen(false)
+                },
               },
-            },
-          }
-        )
+            }
+          )
 
-        // Refresh task list from API after a short delay.
-        // Force=true to bypass throttle since we know a new task was just created.
-        setTimeout(() => fetchTasks(true), 3000)
+          // Refresh task list from API after a short delay.
+          // Force=true to bypass throttle since we know a new task was just created.
+          setTimeout(() => fetchTasks(true), 3000)
+        } else {
+          console.log('[ChatPage] Skipping pre-stabilization schedule_task result — task:', taskId, '| msgId:', msgId)
+        }
       })
     })
   }, [messages, addTask, fetchTasks, toast])
@@ -406,8 +449,11 @@ export default function ChatPage() {
   }, [markSessionAsRead])
 
   const handleDeleteSession = useCallback(async (sessionId) => {
-    cleanupSession(sessionId)
-    cleanupQueue(sessionId)
+    try {
+      cleanupSession(sessionId)
+    } catch (err) {
+      console.warn('[ChatPage] cleanupSession error (non-fatal):', err.message)
+    }
     fetchedSessionsRef.current.delete(sessionId)
     await deleteSession(sessionId)
     if (String(activeSessionId) === String(sessionId)) {
@@ -485,70 +531,6 @@ export default function ChatPage() {
       updateSessionTitle(activeSessionId, title)
     }, images)
   }, [activeSessionId, sendMessage, createSession, updateSessionTitle, touchSession])
-
-  // ── Queue a follow-up message while current prompt is streaming ──
-  const handleQueueMessage = useCallback((content) => {
-    if (!activeSessionId) {
-      toast.error('No active session to queue a message in.', { duration: 3000 })
-      return
-    }
-
-    if (!content?.trim()) return
-
-    addToQueue(activeSessionId, content)
-      .then((item) => {
-        if (item) {
-          toast(
-            `Message queued (#${item.queuePosition})`,
-            {
-              title: 'Queued',
-              type: 'info',
-              duration: 3000,
-            }
-          )
-        }
-      })
-      .catch((err) => {
-        console.error('[ChatPage] Failed to queue message:', err)
-        // If the backend doesn't support the /queue endpoint, show a
-        // friendlier message instead of the raw backend error.
-        const isUnsupported = (err.message || '').toLowerCase().includes('invalid chat endpoint')
-        toast.error(
-          isUnsupported
-            ? 'Please wait for the current response to finish before sending another message.'
-            : (err.message || 'Failed to queue message. Try again.'),
-          { duration: 5000 }
-        )
-      })
-  }, [activeSessionId, addToQueue, toast])
-
-  // ── Clear completed queue items ──
-  const handleClearQueueCompleted = useCallback(() => {
-    if (activeSessionId) {
-      clearQueueCompleted(activeSessionId)
-    }
-  }, [activeSessionId, clearQueueCompleted])
-
-  // ── Refresh messages when a queued item completes ──
-  const prevQueueItemsRef = useRef([])
-  useEffect(() => {
-    if (!activeSessionId) return
-    const currentQueue = getSessionQueue(activeSessionId)
-    const prevQueue = prevQueueItemsRef.current
-
-    // Check if any item just transitioned to 'completed'
-    const newlyCompleted = currentQueue.filter(item =>
-      item.status === 'completed' &&
-      !prevQueue.some(prev => prev.id === item.id && prev.status === 'completed')
-    )
-
-    if (newlyCompleted.length > 0 && !isSessionStreaming(activeSessionId)) {
-      console.log('[ChatPage] Queue item(s) completed — refreshing messages:', newlyCompleted.length)
-      fetchMessages(activeSessionId)
-    }
-
-    prevQueueItemsRef.current = currentQueue
-  }, [activeSessionId, getSessionQueue, fetchMessages, isSessionStreaming])
 
   const handleCancelStream = useCallback(() => {
     if (activeSessionId) {
@@ -644,15 +626,11 @@ export default function ChatPage() {
           agentEvents={agentEvents}
           artifacts={artifacts}
           onSendMessage={handleSendMessage}
-          onQueueMessage={handleQueueMessage}
           onCancelStream={handleCancelStream}
           onClearError={() => setChatError(null)}
           user={user}
           tasksByMessage={tasksByMessage}
           onViewTasks={handleViewTasks}
-          queueItems={activeSessionId ? getSessionQueue(activeSessionId) : []}
-          isQueueing={isQueueing}
-          onClearQueueCompleted={handleClearQueueCompleted}
         />
       </main>
 

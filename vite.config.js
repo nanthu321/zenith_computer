@@ -5,9 +5,17 @@ import https from 'https'
 import { URL } from 'url'
 
 // Backend server
-const BACKEND = 'https://backend-computer.onrender.com'
+// const BACKEND = 'https://backend-computer.onrender.com'
 
-// const BACKEND = 'https://frederic-dicephalous-corresponsively.ngrok-free.dev/backend1'
+const BACKEND = 'https://frederic-dicephalous-corresponsively.ngrok-free.dev/backend1'
+
+/**
+ * Extract the base path from BACKEND (e.g. '/backend1' from '.../backend1').
+ * This prefix must be prepended to every request path in the custom proxy
+ * middlewares (SSE + Workspace) because `new URL(path, BACKEND)` drops it
+ * when `path` starts with '/'.
+ */
+const BACKEND_PATH_PREFIX = new URL(BACKEND).pathname.replace(/\/+$/, '') // e.g. '/backend1' or ''
 
 /**
  * Helper: decode the user_id from a JWT Bearer token (no verification).
@@ -53,7 +61,11 @@ function workspaceProxyPlugin() {
           return next()
         }
 
-        const backendUrl = new URL(req.url, BACKEND)
+        const backendUrl = new URL(BACKEND)
+        // Prepend the backend base path (e.g. '/backend1') to the request path
+        const reqPath = req.url.split('?')[0] || req.url
+        const reqSearch = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''
+        backendUrl.pathname = BACKEND_PATH_PREFIX + reqPath
 
         const auth = req.headers['authorization'] || ''
         const uid = extractUserIdFromJwt(auth) ||
@@ -75,7 +87,7 @@ function workspaceProxyPlugin() {
         const options = {
           hostname: backendUrl.hostname,
           port: 443,
-          path: backendUrl.pathname + backendUrl.search,
+          path: backendUrl.pathname + reqSearch,
           method: 'POST',
           headers: proxyHeaders,
           rejectUnauthorized: false,
@@ -124,9 +136,13 @@ function workspaceProxyPlugin() {
 
       // ── Workspace Proxy (existing) ──
       server.middlewares.use('/api/workspace', (req, res) => {
-        const backendUrl = new URL(req.url, BACKEND)
-        backendUrl.pathname = '/api/workspace' + (req.url.split('?')[0] || '')
-        backendUrl.search = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''
+        const backendUrl = new URL(BACKEND)
+        // req.url here is relative to the mount point '/api/workspace',
+        // e.g. '/list' or '/files?path=...'
+        const subPath = req.url.split('?')[0] || ''
+        const search = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''
+        backendUrl.pathname = BACKEND_PATH_PREFIX + '/api/workspace' + subPath
+        backendUrl.search = search
 
         const auth = req.headers['authorization'] || ''
         const uid = extractUserIdFromJwt(auth) ||
@@ -219,6 +235,14 @@ export default defineConfig({
             const uid = extractUserIdFromJwt(auth)
             if (uid) {
               proxyReq.setHeader('X-User-Id', uid)
+            }
+
+            console.log(`[VITE-PROXY] ${req.method} ${proxyReq.path} → ${BACKEND} | X-User-Id: ${uid || 'NONE'}`)
+          })
+
+          proxy.on('proxyRes', (proxyRes, req, _res) => {
+            if (proxyRes.statusCode >= 400) {
+              console.warn(`[VITE-PROXY] ${req.method} ${req.url} → ${proxyRes.statusCode}`)
             }
           })
         },

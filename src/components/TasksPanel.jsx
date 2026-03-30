@@ -80,8 +80,10 @@ function TaskSkeleton() {
 function TaskCard({ task, onCancel, onDownload, cancellingId }) {
   const [expanded, setExpanded] = useState(false)
   const sp = STATUS_PROPS[task.status] || UNKNOWN_STATUS
-  const isActive = task.is_active ||
-    task.status === TASK_STATUS.RUNNING ||
+  // A task is active ONLY if its status is running or scheduled.
+  // Do NOT rely on is_active alone — after an optimistic cancel update,
+  // is_active is set to false but the status check is the source of truth.
+  const isActive = task.status === TASK_STATUS.RUNNING ||
     task.status === TASK_STATUS.SCHEDULED
 
   const progress = task.total_runs > 0
@@ -221,10 +223,28 @@ export default function TasksPanel({
 }) {
   const [cancellingId, setCancellingId] = useState(null)
 
+  const [cancelError, setCancelError] = useState(null)
+
+  // Track task IDs that have already been submitted for cancellation
+  // to prevent duplicate API calls from rapid clicks
+  const cancelledIdsRef = React.useRef(new Set())
+
   const handleCancel = async (taskId) => {
+    // Prevent duplicate cancel requests for the same task
+    if (cancellingId || cancelledIdsRef.current.has(taskId)) return
+    cancelledIdsRef.current.add(taskId)
+
     setCancellingId(taskId)
+    setCancelError(null)
     try {
       await onCancel?.(taskId)
+    } catch (err) {
+      console.error('[TasksPanel] Cancel failed for task', taskId, ':', err.message)
+      setCancelError(err.message || 'Failed to cancel task')
+      // Auto-clear the error after 5 seconds
+      setTimeout(() => setCancelError(null), 5000)
+      // Allow retry for non-404 errors
+      cancelledIdsRef.current.delete(taskId)
     } finally {
       setCancellingId(null)
     }
@@ -232,6 +252,24 @@ export default function TasksPanel({
 
   return (
     <div className="tasks-panel">
+      {/* ── Cancel Error Toast ── */}
+      {cancelError && (
+        <div className="panel-error panel-error--cancel" role="alert">
+          <span className="panel-error-icon">⚠️</span>
+          <div className="panel-error-content">
+            <span className="panel-error-detail">{cancelError}</span>
+          </div>
+          <button
+            className="panel-error-dismiss"
+            onClick={() => setCancelError(null)}
+            title="Dismiss"
+            aria-label="Dismiss error"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* ── Panel Header ── */}
       <div className="panel-header">
         <span className="panel-title">Scheduled Tasks</span>

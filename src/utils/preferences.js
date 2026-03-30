@@ -110,11 +110,16 @@ export async function savePreferenceAsync(key, value) {
 
   const payload = { [key]: value }
 
+  console.log(`[preferences] 🔼 savePreferenceAsync — key: "${key}"`)
+  console.log(`[preferences] 📦 Request payload:`, JSON.stringify(payload, null, 2))
+  console.log(`[preferences] 📦 Payload size: ${JSON.stringify(payload).length} bytes`)
+
   try {
     await apiFetch('/api/auth/preferences', {
       method: 'PUT',
       body: JSON.stringify(payload),
     })
+    console.log(`[preferences] ✅ Backend confirmed save — key: "${key}" → PUT /api/auth/preferences SUCCESS`)
   } catch (firstErr) {
     // Retry once on transient/server errors (502, 503, network)
     const msg = firstErr.message || ''

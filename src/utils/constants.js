@@ -34,13 +34,6 @@ export const MESSAGE_ROLES = {
   ASSISTANT: 'assistant',
 }
 
-export const QUEUE_STATUS = {
-  QUEUED:     'queued',
-  PROCESSING: 'processing',
-  COMPLETED:  'completed',
-  FAILED:     'failed',
-}
-
 export const TOOL_ICONS = {
   execute_code:           '⚡',
   create_project:         '📁',

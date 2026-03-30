@@ -1,0 +1,292 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   StreamOutput — Global floating stream indicator
+   Shows streaming progress when user navigates away from /chat
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.stream-output {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  width: 340px;
+  max-width: calc(100vw - 48px);
+
+  background: var(--bg-primary, #1a1a2e);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  border-radius: 12px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(99, 102, 241, 0.15);
+  overflow: hidden;
+
+  animation: stream-output-slide-in 0.3s ease-out;
+  transition: all 0.25s ease;
+}
+
+.stream-output--collapsed {
+  width: auto;
+  min-width: 200px;
+  cursor: pointer;
+}
+
+.stream-output--collapsed:hover {
+  border-color: var(--accent-color, #6366f1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(99, 102, 241, 0.3);
+}
+
+.stream-output--error {
+  border-color: rgba(239, 68, 68, 0.4);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(239, 68, 68, 0.2);
+}
+
+@keyframes stream-output-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ── Header ── */
+
+.stream-output-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  gap: 10px;
+  background: var(--bg-secondary, rgba(255, 255, 255, 0.03));
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.06));
+}
+
+.stream-output--collapsed .stream-output-header {
+  border-bottom: none;
+}
+
+.stream-output-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.stream-output-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.stream-output-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary, #e2e8f0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Pulsing dot indicator */
+.stream-output-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6366f1;
+  flex-shrink: 0;
+  animation: stream-pulse 1.5s ease-in-out infinite;
+}
+
+.stream-output--error .stream-output-pulse {
+  background: #ef4444;
+  animation: none;
+}
+
+@keyframes stream-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+}
+
+/* ── Actions ── */
+
+.stream-output-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.stream-output-view-btn {
+  padding: 4px 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #fff;
+  background: #6366f1;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  white-space: nowrap;
+}
+
+.stream-output-view-btn:hover {
+  background: #5558e6;
+}
+
+.stream-output-view-btn:active {
+  background: #4f46e5;
+  transform: scale(0.97);
+}
+
+.stream-output-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  color: var(--text-muted, #94a3b8);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.stream-output-toggle-btn:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.08));
+  color: var(--text-primary, #e2e8f0);
+}
+
+/* ── Content Preview ── */
+
+.stream-output-preview {
+  padding: 10px 14px;
+  max-height: 100px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.stream-output-text {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary, #94a3b8);
+  margin: 0;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.stream-output-cursor {
+  color: #6366f1;
+  animation: stream-cursor-blink 0.8s ease-in-out infinite;
+}
+
+@keyframes stream-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.stream-output-error-text {
+  padding: 8px 14px 12px;
+  font-size: 12px;
+  color: #fca5a5;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Tool Call Badges ── */
+
+.stream-output-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 14px 10px;
+}
+
+.stream-output-tool-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary, #94a3b8);
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.05));
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+
+/* ── Light theme overrides ── */
+
+[data-theme="light"] .stream-output,
+.light .stream-output {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(99, 102, 241, 0.12);
+}
+
+[data-theme="light"] .stream-output-header,
+.light .stream-output-header {
+  background: rgba(0, 0, 0, 0.02);
+  border-bottom-color: rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .stream-output-title,
+.light .stream-output-title {
+  color: #1e293b;
+}
+
+[data-theme="light"] .stream-output-text,
+.light .stream-output-text {
+  color: #475569;
+}
+
+[data-theme="light"] .stream-output-tool-badge,
+.light .stream-output-tool-badge {
+  color: #475569;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="light"] .stream-output-toggle-btn,
+.light .stream-output-toggle-btn {
+  color: #64748b;
+}
+
+[data-theme="light"] .stream-output-toggle-btn:hover,
+.light .stream-output-toggle-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #1e293b;
+}
+
+
+/* ── Responsive ── */
+
+@media (max-width: 640px) {
+  .stream-output {
+    bottom: 16px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-width: none;
+  }
+
+  .stream-output--collapsed {
+    left: auto;
+    width: auto;
+    min-width: 180px;
+  }
+}

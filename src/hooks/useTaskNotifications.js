@@ -5,7 +5,15 @@ import { tasksApi } from "../api/tasks.js";
 /**
  * useTaskNotifications (optimized)
  *
- * Opens a persistent SSE connection to /api/tasks/notifications.
+ * Opens a persistent SSE connection to GET /api/tasks/notifications.
+ * This endpoint proxies task events from the Flask agent to the frontend.
+ * Implemented in TaskNotificationsServlet.java on the backend.
+ *
+ * SSE Event Types:
+ *   - task_run_update  — A task run completed/failed (from POST /internal/task-update webhook)
+ *   - task_completed   — All runs for a task finished
+ *   - heartbeat        — Keep-alive ping
+ *
  * Calls the provided callbacks on each event type.
  *
  * Usage:

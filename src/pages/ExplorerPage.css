@@ -89,3 +89,80 @@
 .explorer-page .vsc-sidebar {
   padding-top: 0;
 }
+
+
+/* ── Streaming indicator bar ──────────────────────────── */
+/* Shows when AI is generating while user is on explorer   */
+
+.explorer-streaming-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px 6px 56px; /* 56px left to clear the logo button */
+  background: linear-gradient(90deg, rgba(99, 102, 241, 0.08), rgba(99, 102, 241, 0.04));
+  border-bottom: 1px solid rgba(99, 102, 241, 0.15);
+  flex-shrink: 0;
+  z-index: 50;
+  animation: explorer-bar-slide-in 0.3s ease-out;
+}
+
+@keyframes explorer-bar-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.explorer-streaming-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6366f1;
+  flex-shrink: 0;
+  animation: explorer-dot-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes explorer-dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+.explorer-streaming-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary, #94a3b8);
+  white-space: nowrap;
+}
+
+.explorer-streaming-link {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6366f1;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+  white-space: nowrap;
+}
+
+.explorer-streaming-link:hover {
+  background: rgba(99, 102, 241, 0.1);
+  text-decoration: underline;
+}
+
+/* Light theme */
+[data-theme="light"] .explorer-streaming-bar {
+  background: linear-gradient(90deg, rgba(99, 102, 241, 0.06), rgba(99, 102, 241, 0.02));
+  border-bottom-color: rgba(99, 102, 241, 0.12);
+}
+
+[data-theme="light"] .explorer-streaming-text {
+  color: #475569;
+}

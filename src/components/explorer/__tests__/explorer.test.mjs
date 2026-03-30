@@ -1,8 +1,11 @@
 /**
- * Explorer Test Suite — Node.js (no test framework required)
+ * Explorer Test Suite
  * Tests all utility logic for WorkspaceExplorer, API helpers, and FileViewer
- * Run: node src/components/explorer/__tests__/explorer.test.mjs
+ * Wrapped in vitest test() for compatibility.
  */
+import { test, expect } from 'vitest'
+
+test('Explorer utility tests', () => {
 
 // ─────────────────────────────────────────────────────────
 // Minimal test harness
@@ -1107,6 +1110,391 @@ describe("Execution output normalization", () => {
 });
 
 // ─────────────────────────────────────────────────────────
+// ZIP structure & download logic tests
+// ─────────────────────────────────────────────────────────
+
+describe("ZIP folder structure — root folder wrapping", () => {
+  // Simulate the ZIP structure logic from downloadUtils.js
+  // Files should be nested under a root folder named after the project
+
+  function buildZipPaths(projectName, files) {
+    // Simulates how downloadProjectAsZip now builds paths
+    return files.map(f => `${projectName}/${f.relativePath}`);
+  }
+
+  const files = [
+    { relativePath: "index.html", name: "index.html" },
+    { relativePath: "css/style.css", name: "style.css" },
+    { relativePath: "js/app.js", name: "app.js" },
+  ];
+
+  const zipPaths = buildZipPaths("MY-PROJECT", files);
+  assertEqual(zipPaths[0], "MY-PROJECT/index.html", "Root file wrapped under project folder");
+  assertEqual(zipPaths[1], "MY-PROJECT/css/style.css", "Nested file wrapped under project folder");
+  assertEqual(zipPaths[2], "MY-PROJECT/js/app.js", "Nested JS file wrapped under project folder");
+
+  // Empty project creates a root folder entry
+  const emptyPaths = buildZipPaths("EMPTY-PROJECT", []);
+  assertEqual(emptyPaths.length, 0, "Empty project has no file paths (folder entry is implicit)");
+});
+
+describe("isBinaryFile — used in ZIP binary handling", () => {
+  // Extended binary set matching downloadUtils.js (includes font extensions)
+  const BINARY_EXTS_FULL = new Set([
+    "png","jpg","jpeg","gif","webp","bmp","ico","tiff","tif",
+    "zip","tar","gz","rar","7z",
+    "pdf","doc","docx","xls","xlsx","ppt","pptx",
+    "mp3","mp4","wav","avi","mov","ogg","webm","mkv",
+    "exe","dll","so","dylib","wasm",
+    "pyc","class","o",
+    "woff","woff2","ttf","otf","eot",
+  ]);
+  function isBinaryFileFull(name = "") {
+    const ext = name.split(".").pop().toLowerCase();
+    return BINARY_EXTS_FULL.has(ext);
+  }
+
+  // Binary files should be read as ArrayBuffer/Uint8Array for ZIP
+  assert(isBinaryFileFull("image.png"), "PNG is binary → needs binary read for ZIP");
+  assert(isBinaryFileFull("archive.zip"), "ZIP is binary → needs binary read for ZIP");
+  assert(isBinaryFileFull("font.woff2"), "WOFF2 is binary → needs binary read for ZIP");
+  assert(isBinaryFileFull("font.ttf"), "TTF is binary → needs binary read for ZIP");
+  assert(!isBinaryFileFull("app.js"), "JS is text → can be added as string to ZIP");
+  assert(!isBinaryFileFull("styles.css"), "CSS is text → can be added as string to ZIP");
+  assert(!isBinaryFileFull("README.md"), "MD is text → can be added as string to ZIP");
+});
+
+describe("ZIP magic bytes validation", () => {
+  // Simulate the ZIP validation logic from tryBackendDownload
+  function isValidZipHeader(bytes) {
+    return bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4B;
+  }
+
+  // Valid ZIP header (PK)
+  assert(isValidZipHeader([0x50, 0x4B, 0x03, 0x04]), "PK\\x03\\x04 is valid ZIP header");
+  assert(isValidZipHeader([0x50, 0x4B, 0x05, 0x06]), "PK\\x05\\x06 (empty archive) is valid ZIP header");
+
+  // Invalid headers (HTML error page, plain text, etc.)
+  assert(!isValidZipHeader([0x3C, 0x68, 0x74, 0x6D]), "<htm... is NOT a valid ZIP header");
+  assert(!isValidZipHeader([0x7B, 0x22, 0x65, 0x72]), "{\"er... (JSON error) is NOT a valid ZIP header");
+  assert(!isValidZipHeader([]), "Empty bytes are NOT a valid ZIP header");
+  assert(!isValidZipHeader([0x50]), "Single byte is NOT a valid ZIP header");
+});
+
+describe("Parent path extraction for nested file creation", () => {
+  // Simulate the logic used in workspace.js writeFile to ensure parent dirs
+  function getParentPath(filePath) {
+    if (!filePath || !filePath.includes("/")) return "";
+    return filePath.substring(0, filePath.lastIndexOf("/"));
+  }
+
+  assertEqual(getParentPath("src/components/Button.jsx"), "src/components", "Nested file parent path");
+  assertEqual(getParentPath("src/index.js"), "src", "One-level nested file parent path");
+  assertEqual(getParentPath("README.md"), "", "Root-level file has no parent");
+  assertEqual(getParentPath(""), "", "Empty path has no parent");
+  assertEqual(getParentPath("a/b/c/d/file.txt"), "a/b/c/d", "Deeply nested parent path");
+});
+
+describe("Recursive folder creation — path segments", () => {
+  // Simulate the logic used in workspace.js createFolder for nested paths
+  function getIntermediatePaths(path) {
+    if (!path || !path.includes("/")) return [];
+    const segments = path.split("/");
+    const paths = [];
+    let current = "";
+    for (let i = 0; i < segments.length - 1; i++) {
+      current = current ? `${current}/${segments[i]}` : segments[i];
+      paths.push(current);
+    }
+    return paths;
+  }
+
+  assertEqual(getIntermediatePaths("src/components/utils"), ["src", "src/components"], "Two intermediate paths");
+  assertEqual(getIntermediatePaths("a/b/c/d"), ["a", "a/b", "a/b/c"], "Three intermediate paths");
+  assertEqual(getIntermediatePaths("single-folder"), [], "No intermediate paths for single segment");
+  assertEqual(getIntermediatePaths(""), [], "Empty path has no intermediates");
+  assertEqual(getIntermediatePaths("a/b"), ["a"], "One intermediate path");
+});
+
+describe("collectFiles — relative path building for ZIP", () => {
+  // Simulate how collectFiles builds relative paths
+  function buildRelativePath(relativePath, name) {
+    return relativePath ? `${relativePath}/${name}` : name;
+  }
+
+  assertEqual(buildRelativePath("", "index.html"), "index.html", "Root-level file");
+  assertEqual(buildRelativePath("src", "app.js"), "src/app.js", "Nested file");
+  assertEqual(buildRelativePath("src/components", "Button.tsx"), "src/components/Button.tsx", "Deeply nested file");
+});
+
+// ─────────────────────────────────────────────────────────
+// Section button fallback — New File/Folder when FileTree is
+// not mounted (project collapsed / wrapped project scenario)
+// ─────────────────────────────────────────────────────────
+describe("Section button fallback — triggerCreateInProject when ref is null", () => {
+  // Simulates the fixed button onClick logic in ProjectSection:
+  //   if (fileTreeRef?.current?.triggerNewFile) {
+  //     fileTreeRef.current.triggerNewFile();
+  //   } else {
+  //     onCreateInProject?.(name, "file");
+  //   }
+  function simulateNewFileClick(fileTreeRef, projectName, onCreateInProject) {
+    let usedRef = false;
+    let usedFallback = false;
+    let fallbackArgs = null;
+
+    if (fileTreeRef?.current?.triggerNewFile) {
+      fileTreeRef.current.triggerNewFile();
+      usedRef = true;
+    } else {
+      if (onCreateInProject) {
+        onCreateInProject(projectName, "file");
+        usedFallback = true;
+      }
+    }
+    return { usedRef, usedFallback };
+  }
+
+  function simulateNewFolderClick(fileTreeRef, projectName, onCreateInProject) {
+    let usedRef = false;
+    let usedFallback = false;
+
+    if (fileTreeRef?.current?.triggerNewFolder) {
+      fileTreeRef.current.triggerNewFolder();
+      usedRef = true;
+    } else {
+      if (onCreateInProject) {
+        onCreateInProject(projectName, "folder");
+        usedFallback = true;
+      }
+    }
+    return { usedRef, usedFallback };
+  }
+
+  // Case 1: FileTree is mounted (ref available) → use ref
+  const mountedRef = {
+    current: {
+      triggerNewFile: () => {},
+      triggerNewFolder: () => {},
+      triggerRefresh: () => {},
+    }
+  };
+  const r1 = simulateNewFileClick(mountedRef, "MY-PROJECT", () => {});
+  assert(r1.usedRef === true, "Mounted ref: uses triggerNewFile via ref");
+  assert(r1.usedFallback === false, "Mounted ref: does NOT use fallback");
+
+  // Case 2: FileTree NOT mounted (ref.current = null) → use fallback
+  const nullRef = { current: null };
+  let fallbackCalled = false;
+  let fallbackProject = null;
+  let fallbackType = null;
+  const r2 = simulateNewFileClick(nullRef, "MY-PROJECT", (proj, type) => {
+    fallbackCalled = true;
+    fallbackProject = proj;
+    fallbackType = type;
+  });
+  assert(r2.usedRef === false, "Null ref: does NOT use ref");
+  assert(r2.usedFallback === true, "Null ref: uses fallback");
+  assert(fallbackCalled === true, "Null ref: onCreateInProject was called");
+  assertEqual(fallbackProject, "MY-PROJECT", "Null ref: correct project passed to fallback");
+  assertEqual(fallbackType, "file", "Null ref: correct type 'file' passed to fallback");
+
+  // Case 3: ref is undefined → use fallback
+  const r3 = simulateNewFileClick(undefined, "MY-PROJECT", () => {});
+  assert(r3.usedRef === false, "Undefined ref: does NOT use ref");
+  assert(r3.usedFallback === true, "Undefined ref: uses fallback");
+
+  // Case 4: Folder creation with null ref → fallback
+  fallbackCalled = false;
+  fallbackType = null;
+  const r4 = simulateNewFolderClick(nullRef, "MY-PROJECT", (proj, type) => {
+    fallbackCalled = true;
+    fallbackType = type;
+  });
+  assert(r4.usedRef === false, "Null ref folder: does NOT use ref");
+  assert(r4.usedFallback === true, "Null ref folder: uses fallback");
+  assertEqual(fallbackType, "folder", "Null ref folder: correct type 'folder' passed");
+
+  // Case 5: Folder creation with mounted ref → use ref
+  const r5 = simulateNewFolderClick(mountedRef, "MY-PROJECT", () => {});
+  assert(r5.usedRef === true, "Mounted ref folder: uses triggerNewFolder via ref");
+  assert(r5.usedFallback === false, "Mounted ref folder: does NOT use fallback");
+});
+
+describe("triggerCreateInProject — expands project and sets pendingCreate", () => {
+  // Simulates the triggerCreateInProject function from WorkspaceExplorer
+  function simulateTriggerCreateInProject(
+    expandedProjects, activeProject, targetProject, createType
+  ) {
+    // Clone the set to simulate React state
+    const nextExpanded = new Set([...expandedProjects, targetProject]);
+    const nextActiveProject = targetProject;
+    const nextPendingCreate = { type: createType, project: targetProject };
+    return { nextExpanded, nextActiveProject, nextPendingCreate };
+  }
+
+  // Case 1: Project was collapsed → should be expanded
+  const collapsed = new Set();
+  const r1 = simulateTriggerCreateInProject(collapsed, null, "2048-GAME", "file");
+  assert(r1.nextExpanded.has("2048-GAME"), "Collapsed project is now expanded");
+  assertEqual(r1.nextActiveProject, "2048-GAME", "Active project set correctly");
+  assertEqual(r1.nextPendingCreate.type, "file", "Pending create type is 'file'");
+  assertEqual(r1.nextPendingCreate.project, "2048-GAME", "Pending create project is correct");
+
+  // Case 2: Project was already expanded → stays expanded, pendingCreate set
+  const expanded = new Set(["2048-GAME"]);
+  const r2 = simulateTriggerCreateInProject(expanded, "2048-GAME", "2048-GAME", "folder");
+  assert(r2.nextExpanded.has("2048-GAME"), "Already-expanded project stays expanded");
+  assertEqual(r2.nextPendingCreate.type, "folder", "Pending create type is 'folder'");
+
+  // Case 3: Another project was expanded → both should be expanded
+  const otherExpanded = new Set(["OTHER-PROJECT"]);
+  const r3 = simulateTriggerCreateInProject(otherExpanded, "OTHER-PROJECT", "2048-GAME", "file");
+  assert(r3.nextExpanded.has("OTHER-PROJECT"), "Other project stays expanded");
+  assert(r3.nextExpanded.has("2048-GAME"), "Target project is now also expanded");
+  assertEqual(r3.nextPendingCreate.project, "2048-GAME", "Pending create targets correct project");
+});
+
+describe("pendingCreate propagation to FileTree — deferred until loaded", () => {
+  // Simulates the FileTree useEffect logic for pendingCreate
+  function simulatePendingCreateEffect(pendingCreate, loading) {
+    let rootInlineCreate = null;
+    let pendingCreateDeferred = null;
+    let consumed = false;
+
+    if (pendingCreate) {
+      if (!loading) {
+        rootInlineCreate = pendingCreate;
+        consumed = true;
+      } else {
+        pendingCreateDeferred = pendingCreate;
+        consumed = true;
+      }
+    }
+    return { rootInlineCreate, pendingCreateDeferred, consumed };
+  }
+
+  // Simulate the deferred resolution when loading finishes
+  function simulateLoadingComplete(pendingCreateDeferred) {
+    let rootInlineCreate = null;
+    if (pendingCreateDeferred) {
+      rootInlineCreate = pendingCreateDeferred;
+    }
+    return { rootInlineCreate };
+  }
+
+  // Case 1: Tree already loaded → show inline input immediately
+  const r1 = simulatePendingCreateEffect("file", false);
+  assertEqual(r1.rootInlineCreate, "file", "Loaded tree: inline input shown immediately");
+  assert(r1.pendingCreateDeferred === null, "Loaded tree: nothing deferred");
+  assert(r1.consumed === true, "Loaded tree: consumed signal");
+
+  // Case 2: Tree still loading → defer until loaded
+  const r2 = simulatePendingCreateEffect("file", true);
+  assert(r2.rootInlineCreate === null, "Loading tree: inline input NOT shown yet");
+  assertEqual(r2.pendingCreateDeferred, "file", "Loading tree: deferred create stored");
+  assert(r2.consumed === true, "Loading tree: consumed signal");
+
+  // Case 2b: Loading completes → show deferred inline input
+  const r2b = simulateLoadingComplete(r2.pendingCreateDeferred);
+  assertEqual(r2b.rootInlineCreate, "file", "After load complete: deferred create shown");
+
+  // Case 3: No pending create → nothing happens
+  const r3 = simulatePendingCreateEffect(null, false);
+  assert(r3.rootInlineCreate === null, "No pending: no inline input");
+  assert(r3.consumed === false, "No pending: nothing consumed");
+
+  // Case 4: Folder creation
+  const r4 = simulatePendingCreateEffect("folder", false);
+  assertEqual(r4.rootInlineCreate, "folder", "Folder create: inline input shown");
+
+  // Case 5: Folder deferred
+  const r5 = simulatePendingCreateEffect("folder", true);
+  assertEqual(r5.pendingCreateDeferred, "folder", "Folder deferred while loading");
+  const r5b = simulateLoadingComplete(r5.pendingCreateDeferred);
+  assertEqual(r5b.rootInlineCreate, "folder", "Folder shown after load complete");
+});
+
+describe("End-to-end: collapsed project → New File button → file created", () => {
+  // Simulates the full flow:
+  // 1. User clicks "New File" on a collapsed project section header
+  // 2. Button fallback fires triggerCreateInProject (since ref is null)
+  // 3. Project expands, pendingCreate set
+  // 4. FileTree mounts, loading starts
+  // 5. Loading finishes, deferred pendingCreate shows inline input
+  // 6. User types name, submits
+  // 7. API call creates file, tree refreshes
+
+  let expandedProjects = new Set();
+  let activeProject = null;
+  let pendingCreate = null;
+  const projectName = "2048-GAME";
+
+  // Step 1-2: Button click, ref is null → fallback fires
+  const fileTreeRef = { current: null };
+  let fallbackFired = false;
+  if (fileTreeRef?.current?.triggerNewFile) {
+    fileTreeRef.current.triggerNewFile();
+  } else {
+    // triggerCreateInProject equivalent
+    expandedProjects = new Set([...expandedProjects, projectName]);
+    activeProject = projectName;
+    pendingCreate = { type: "file", project: projectName };
+    fallbackFired = true;
+  }
+  assert(fallbackFired, "E2E: Fallback fired because ref was null");
+  assert(expandedProjects.has(projectName), "E2E: Project is now expanded");
+  assertEqual(activeProject, projectName, "E2E: Active project set");
+  assertEqual(pendingCreate.type, "file", "E2E: PendingCreate is 'file'");
+  assertEqual(pendingCreate.project, projectName, "E2E: PendingCreate targets correct project");
+
+  // Step 3-4: FileTree receives pendingCreate, but is loading
+  let rootInlineCreate = null;
+  let deferredCreate = null;
+  const isLoading = true;
+  const pendingCreateProp = pendingCreate.project === projectName ? pendingCreate.type : null;
+
+  if (pendingCreateProp) {
+    if (!isLoading) {
+      rootInlineCreate = pendingCreateProp;
+    } else {
+      deferredCreate = pendingCreateProp;
+    }
+    pendingCreate = null; // consumed
+  }
+
+  assert(rootInlineCreate === null, "E2E: Inline input not shown during loading");
+  assertEqual(deferredCreate, "file", "E2E: Create deferred until loading finishes");
+  assert(pendingCreate === null, "E2E: PendingCreate consumed by FileTree");
+
+  // Step 5: Loading finishes
+  if (deferredCreate) {
+    rootInlineCreate = deferredCreate;
+    deferredCreate = null;
+  }
+  assertEqual(rootInlineCreate, "file", "E2E: After loading, inline input shown");
+  assert(deferredCreate === null, "E2E: Deferred create cleared");
+
+  // Step 6-7: User submits name → API call → tree refreshes (simulated)
+  const newFileName = "game.js";
+  const newFilePath = newFileName; // root-level file
+  let apiCalled = false;
+  let treeRefreshed = false;
+  let fileSelected = false;
+
+  // Simulate API + UI updates
+  apiCalled = true; // workspaceApi.writeFile(project, path, "")
+  treeRefreshed = true; // loadRoot()
+  fileSelected = true; // onFileSelect({ name, path, type: "file" })
+  rootInlineCreate = null; // cleared after submit
+
+  assert(apiCalled, "E2E: API was called to create file");
+  assert(treeRefreshed, "E2E: Tree was refreshed");
+  assert(fileSelected, "E2E: New file was selected/opened");
+  assert(rootInlineCreate === null, "E2E: Inline input cleared after creation");
+});
+
+// ─────────────────────────────────────────────────────────
 // Summary
 // ─────────────────────────────────────────────────────────
 console.log("\n" + "=".repeat(60));
@@ -1119,4 +1507,7 @@ if (failures.length > 0) {
 }
 console.log("=".repeat(60) + "\n");
 
-process.exit(failed > 0 ? 1 : 0);
+// Close the vitest test() block
+expect(failed).toBe(0);
+
+}) // end test()

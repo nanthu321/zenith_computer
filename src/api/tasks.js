@@ -6,16 +6,27 @@
  *
  * Backend API Endpoints (actual servlet routes):
  *   1. GET    /api/tasks                    — List all tasks for authenticated user
- *   2. GET    /api/tasks/{taskId}           — Get single task with run_logs
- *   3. POST   /api/task-cancel/{taskId}     — Cancel a scheduled/running task
- *   4. GET    /api/task-download/{taskId}   — Download task output file
- *   5. GET    /api/tasks/notifications      — SSE stream for live task updates
- *   6. POST   /internal/task-update         — Internal webhook (not called from frontend)
+ *      Implemented in TasksServlet.java
+ *   2. GET    /api/tasks/{taskId}           — Get single task with merged live status + run_logs
+ *      Implemented in TasksServlet.java
+ *   3. POST   /api/task-cancel/{taskId}     — Cancel a task (updates DB → 'cancelled', best-effort executor cancel)
+ *      Implemented in TaskCancelServlet.java
+ *   4. GET    /api/task-download/{taskId}   — Download task output file (Flask agent → executor fallback)
+ *      Implemented in TaskDownloadServlet.java
+ *   5. GET    /api/tasks/notifications      — SSE stream for live task updates (proxies Flask agent events)
+ *      Implemented in TaskNotificationsServlet.java
+ *   6. POST   /internal/task-update         — Internal webhook (AI Agent / Task Executor only, NOT called from frontend)
+ *      Pushes task_run_update and task_completed events. Implemented in TaskUpdateWebhookServlet.java
  *
- * NOTE: The OpenAPI spec documents cancel as /api/tasks/{taskId}/cancel and
- *       download as /api/tasks/{taskId}/download, but the actual backend servlet
- *       mapping is /api/task-cancel/{taskId} and /api/task-download/{taskId}.
- *       This module uses the ACTUAL backend routes.
+ * ⚠️  OpenAPI spec mismatch:
+ *   The OpenAPI spec documents cancel/download as:
+ *     /api/tasks/{taskId}/cancel   and   /api/tasks/{taskId}/download
+ *   But the actual implemented routes are:
+ *     /api/task-cancel/{taskId}    and   /api/task-download/{taskId}
+ *   This is due to servlet path mapping constraints in the Java backend.
+ *
+ * Note: Task creation happens server-side via the AI agent's `schedule_task` tool.
+ * There is no direct POST /api/tasks endpoint for creating tasks from the frontend.
  */
 
 import { apiFetch, downloadFile } from '../utils/api.js'
@@ -43,6 +54,9 @@ export const tasksApi = {
    * Updates DB status to 'cancelled' and sends a best-effort cancel
    * to the task executor.
    *
+   * ⚠️  Note: The OpenAPI spec documents this as /api/tasks/{taskId}/cancel
+   *     but the actual servlet route is /api/task-cancel/{taskId}.
+   *
    * @param {string} taskId
    * @returns {Promise<Object>} { task_id, status: 'cancelled' }
    */
@@ -50,29 +64,14 @@ export const tasksApi = {
     apiFetch(`/api/task-cancel/${encodeURIComponent(taskId)}`, { method: 'POST' }),
 
   /**
-   * Schedule a new task (add task).
-   * POST /api/tasks
-   *
-   * @param {Object} taskData — Task creation payload
-   * @param {string} taskData.description — Human-readable task description
-   * @param {number} taskData.interval_seconds — Interval between runs in seconds
-   * @param {number} [taskData.total_runs] — Maximum number of runs (0 = unlimited)
-   * @param {string} [taskData.ends_at] — ISO date string for task end time
-   * @param {string} [taskData.prompt] — The prompt/instruction for the AI agent
-   * @param {Array}  [taskData.steps] — Steps for the task executor
-   * @returns {Promise<Object>} Created task object with task_id
-   */
-  addTask: (taskData) =>
-    apiFetch('/api/tasks', {
-      method: 'POST',
-      body: JSON.stringify(taskData),
-    }),
-
-  /**
    * Download the output file of a completed task.
    * GET /api/task-download/{taskId}
    *
+   * First tries the Flask agent, then falls back to the task executor.
    * Triggers a browser file download via the centralized downloadFile utility.
+   *
+   * ⚠️  Note: The OpenAPI spec documents this as /api/tasks/{taskId}/download
+   *     but the actual servlet route is /api/task-download/{taskId}.
    *
    * @param {string} taskId
    * @param {string} [filename] — Optional filename hint (not used by backend)

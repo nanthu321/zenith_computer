@@ -54,7 +54,7 @@
 }
 
 .landing-logo {
-  width: 4rem;
+  width: 6rem;
   border-radius: 16px;
   object-fit: contain;
   filter: drop-shadow(0 4px 18px rgba(34, 109, 180, 0.28));
@@ -177,7 +177,6 @@
   gap: 6px;
   position: relative;
   min-width: 0;
-  overflow: hidden;
 }
 
 

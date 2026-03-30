@@ -123,26 +123,33 @@ function buildHeaders(extra = {}) {
 //  Route → mock handler matcher
 // ─────────────────────────────────────────────────
 function matchMock(method, path, body) {
-  const key = `${method} ${path}`
+  // Separate path from query string for matching
+  const [pathOnly, queryString] = path.split('?')
+  const key = `${method} ${pathOnly}`
 
   if (mockHandlers[key]) return mockHandlers[key](body)
 
-  const delSession = path.match(/^\/api\/sessions\/(\d+)$/)
+  const delSession = pathOnly.match(/^\/api\/sessions\/(\d+)$/)
   if (method === 'DELETE' && delSession) return mockHandlers['DELETE /api/sessions'](delSession[1])
 
-  const getMsg = path.match(/^\/api\/sessions\/(\d+)\/messages$/)
+  const getMsg = pathOnly.match(/^\/api\/sessions\/(\d+)\/messages$/)
   if (method === 'GET' && getMsg) return mockHandlers['GET /api/sessions/messages'](getMsg[1])
 
   // Task cancel — actual backend route: POST /api/task-cancel/{taskId}
-  const cancelTask = path.match(/^\/api\/task-cancel\/(.+)$/)
-  if (method === 'POST' && cancelTask) return mockHandlers['POST /api/task-cancel'](cancelTask[1])
+  // (OpenAPI spec says /api/tasks/{taskId}/cancel but servlet maps to /api/task-cancel/{taskId})
+  const cancelTask = pathOnly.match(/^\/api\/task-cancel\/(.+)$/)
+  if (method === 'POST' && cancelTask) return mockHandlers['POST /api/tasks/cancel'](cancelTask[1])
 
-  // Legacy cancel route (kept for backward compatibility)
-  const cancelTaskLegacy = path.match(/^\/api\/tasks\/(.+)\/cancel$/)
-  if (method === 'POST' && cancelTaskLegacy) return mockHandlers['POST /api/task-cancel'](cancelTaskLegacy[1])
+  // Task download — actual backend route: GET /api/task-download/{taskId}
+  // (OpenAPI spec says /api/tasks/{taskId}/download but servlet maps to /api/task-download/{taskId})
+  const downloadTask = pathOnly.match(/^\/api\/task-download\/(.+)$/)
+  if (method === 'GET' && downloadTask) {
+    // In mock mode, downloadFile shows an alert — this match just prevents a 404
+    return { mock: true, message: 'Download not available in mock mode' }
+  }
 
-  // Task detail — GET /api/tasks/{taskId}
-  const getTaskDetail = path.match(/^\/api\/tasks\/([^/]+)$/)
+  // Task detail — GET /api/tasks/{taskId} (single task with merged live status + run_logs)
+  const getTaskDetail = pathOnly.match(/^\/api\/tasks\/([^/]+)$/)
   if (method === 'GET' && getTaskDetail) {
     // Return a matching task from mock data, or null
     const taskId = getTaskDetail[1]
@@ -157,16 +164,22 @@ function matchMock(method, path, body) {
     return null
   }
 
-  // Chat queue — POST /api/chat/{sessionId}/queue  (add to queue)
-  const postQueue = path.match(/^\/api\/chat\/(\d+)\/queue$/)
-  if (method === 'POST' && postQueue) {
-    return mockHandlers['POST /api/chat/queue'](postQueue[1], body)
+  // OAuth — DELETE /api/auth/oauth/link?provider=... (extract provider from query string)
+  if (method === 'DELETE' && pathOnly === '/api/auth/oauth/link') {
+    const params = new URLSearchParams(queryString || '')
+    const provider = params.get('provider')
+    return mockHandlers['DELETE /api/auth/oauth/link'](provider)
   }
 
-  // Chat queue — GET /api/chat/{sessionId}/queue  (get status)
-  const getQueue = path.match(/^\/api\/chat\/(\d+)\/queue$/)
-  if (method === 'GET' && getQueue) {
-    return mockHandlers['GET /api/chat/queue'](getQueue[1])
+  // OAuth — GET /api/auth/oauth/callback?code=...&state=...
+  if (method === 'GET' && pathOnly === '/api/auth/oauth/callback') {
+    return mockHandlers['GET /api/auth/oauth/callback']?.()
+  }
+
+  // Project download — GET /api/project-download/{projectId}
+  const projectDownload = pathOnly.match(/^\/api\/project-download\/(.+)$/)
+  if (method === 'GET' && projectDownload) {
+    return { mock: true, message: 'Project download not available in mock mode' }
   }
 
   return null
@@ -576,38 +589,6 @@ export function streamChat(sessionId, message, callbacks) {
     })
 
   return controller
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  Chat Queue API
-//  Allows queuing follow-up prompts while a prompt is still running.
-// ─────────────────────────────────────────────────────────────────
-
-/**
- * Add a prompt to the chat queue for a session.
- * POST /api/chat/{sessionId}/queue
- *
- * @param {string|number} sessionId
- * @param {string} message
- * @returns {Promise<Object>} The queued item with id, queuePosition, status, etc.
- */
-export async function queuePrompt(sessionId, message) {
-  return apiFetch(`/api/chat/${sessionId}/queue`, {
-    method: 'POST',
-    body: JSON.stringify({ message }),
-  })
-}
-
-/**
- * Get the current queue status for a session.
- * GET /api/chat/{sessionId}/queue
- *
- * @param {string|number} sessionId
- * @returns {Promise<Array>} Array of queue items with status, position, etc.
- */
-export async function getQueueStatus(sessionId) {
-  const data = await apiFetch(`/api/chat/${sessionId}/queue`)
-  return Array.isArray(data) ? data : (data?.items ?? data?.queue ?? [])
 }
 
 // ─────────────────────────────────────────────────────────────────

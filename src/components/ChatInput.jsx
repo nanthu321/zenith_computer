@@ -74,7 +74,7 @@ function fileIcon(cat) {
 }
 
 /* ═════════════════════════════════════════════════════════════ */
-export default function ChatInput({ onSend, onQueue, disabled, isGenerating = false, isLanding = false }) {
+export default function ChatInput({ onSend, disabled, isGenerating = false, isLanding = false }) {
   const [value, setValue]             = useState('')
   const [attachments, setAttachments] = useState([])
   const [dragOver, setDragOver]       = useState(false)
@@ -86,7 +86,7 @@ export default function ChatInput({ onSend, onQueue, disabled, isGenerating = fa
   const anyFileRef      = useRef(null)
   const imageRef        = useRef(null)
   const videoRef        = useRef(null)
-  const audioRef        = useRef(null)
+  
   const menuRef         = useRef(null)
   const plusBtnRef      = useRef(null)
   const recognitionRef  = useRef(null)
@@ -303,17 +303,6 @@ export default function ChatInput({ onSend, onQueue, disabled, isGenerating = fa
     const txt = value.trim()
     if ((!txt && !attachments.length) || disabled) return
 
-    // If currently generating and a queue handler is provided, queue the message
-    if (isGenerating && onQueue) {
-      onQueue(txt)
-      setValue('')
-      clearAll()
-      setMenuOpen(false)
-      if (textareaRef.current) textareaRef.current.style.height = 'auto'
-      return
-    }
-
-    // Normal send (not generating)
     if (isGenerating) return
     const files = attachments.length ? await toBase64(attachments) : []
     onSend(txt, files)
@@ -385,17 +374,14 @@ export default function ChatInput({ onSend, onQueue, disabled, isGenerating = fa
   }
 
   const pick = (ref) => { setMenuOpen(false); ref.current?.click() }
-  // Allow sending even while generating (message gets queued)
   const hasContent = value.trim() || attachments.length > 0
-  const canQueue = isGenerating && onQueue && value.trim()
-  const canSend = (hasContent && !disabled && !isGenerating) || canQueue
+  const canSend = hasContent && !disabled && !isGenerating
 
   /* ═════ MENU OPTIONS ═════ */
   const menuItems = [
     { icon: I.file,   bg: 'rgba(96,165,250,.12)',  color: '#60a5fa', label: 'Upload file',    hint: 'Documents, code, data, any file', action: () => pick(anyFileRef) },
     { icon: I.image,  bg: 'rgba(34,109,180,.12)', color: '#226DB4', label: 'Upload image',   hint: 'PNG, JPG, GIF, WebP, SVG',        action: () => pick(imageRef) },
     { icon: I.video,  bg: 'rgba(244,114,182,.12)', color: '#f472b6', label: 'Upload video',   hint: 'MP4, WebM, MOV, AVI',             action: () => pick(videoRef) },
-    { icon: I.audio,  bg: 'rgba(52,211,153,.12)',  color: '#34d399', label: 'Upload audio',   hint: 'MP3, WAV, OGG, AAC, FLAC',        action: () => pick(audioRef) },
     { divider: true },
     { icon: I.screen, bg: 'rgba(251,191,36,.12)',  color: '#fbbf24', label: 'Take a screenshot', hint: 'Capture your screen',           action: doScreenshot },
     { icon: I.clip,   bg: 'rgba(251,191,36,.12)',  color: '#fbbf24', label: 'Paste from clipboard', hint: 'Or press Ctrl+V',            action: doClipboard },
@@ -499,44 +485,32 @@ export default function ChatInput({ onSend, onQueue, disabled, isGenerating = fa
             {/* Center: Textarea */}
             <textarea
               ref={textareaRef}
-              className={'ci-textarea' + (isGenerating && onQueue ? ' ci-textarea--queue-mode' : isGenerating ? ' ci-textarea--generating' : '')}
+              className={'ci-textarea' + (isGenerating ? ' ci-textarea--generating' : '')}
               value={value}
               onChange={e => setValue(e.target.value)}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
-              placeholder={isGenerating && onQueue ? 'Type to queue your next message…' : isGenerating ? 'Generating response...' : isLanding ? 'Ask me anything…' : 'Message Zenith...'}
+              placeholder={isGenerating ? 'Generating response...' : isLanding ? 'Ask me anything…' : 'Message Zenith...'}
               disabled={disabled}
               rows={1}
             />
 
             {/* Right: send button */}
             <div className="ci-right">
-              {isGenerating && !canQueue && <span className="ci-dot-pulse" />}
+              {isGenerating && <span className="ci-dot-pulse" />}
               {attachments.length > 0 && <span className="ci-badge">{attachments.length}</span>}
               <button
                 type="submit"
                 className={
                   'ci-send'
                   + (canSend ? ' ci-send--active' : '')
-                  + (canQueue ? ' ci-send--queue' : '')
-                  + (isGenerating && !canQueue ? ' ci-send--generating' : '')
+                  + (isGenerating ? ' ci-send--generating' : '')
                 }
                 disabled={!canSend}
-                title={
-                  canQueue
-                    ? 'Queue message (will run after current response)'
-                    : isGenerating
-                      ? 'Type a message to queue it'
-                      : 'Send (Enter)'
-                }
+                title={isGenerating ? 'Generating response…' : 'Send (Enter)'}
               >
-                {isGenerating && !canQueue ? (
+                {isGenerating ? (
                   <span className="ci-spinner" />
-                ) : canQueue ? (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
-                    <rect x="3" y="17" width="18" height="3" rx="1.5" fill="currentColor" opacity="0.3"/>
-                  </svg>
                 ) : (
                   I.send
                 )}
@@ -549,7 +523,7 @@ export default function ChatInput({ onSend, onQueue, disabled, isGenerating = fa
         <input ref={anyFileRef} type="file" multiple onChange={handleFileSelect} hidden />
         <input ref={imageRef}   type="file" accept="image/*" multiple onChange={handleFileSelect} hidden />
         <input ref={videoRef}   type="file" accept="video/*" multiple onChange={handleFileSelect} hidden />
-        <input ref={audioRef}   type="file" accept="audio/*" multiple onChange={handleFileSelect} hidden />
+        
       </div>
 
       {/* Popup Menu — rendered as a portal to escape overflow:hidden parents */}

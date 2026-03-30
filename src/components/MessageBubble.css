@@ -1674,6 +1674,70 @@
   box-shadow: 0 0 6px rgba(34, 109, 180, 0.35);
 }
 
+/* ══════════════════════════════════════════════════════════════
+   Loading Header Bar — slim rounded bar above the 3-dot loader
+   Matches the screenshot: small white rounded rectangle sitting
+   directly above the thinking-dots container.
+   ══════════════════════════════════════════════════════════════ */
+
+.msg-loading-bar {
+  width: 180px;
+  height: 36px;
+  border-radius: 18px;
+  border-bottom-left-radius: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  position: relative;
+  overflow: hidden;
+  animation: msg-loading-bar-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes msg-loading-bar-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.94); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);    }
+}
+
+/* Shimmer sweep effect inside the bar */
+.msg-loading-bar__shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(99, 102, 241, 0.10) 30%,
+    rgba(139, 92, 246, 0.15) 50%,
+    rgba(99, 102, 241, 0.10) 70%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: msg-loading-bar-shimmer 2s ease-in-out infinite;
+}
+
+@keyframes msg-loading-bar-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Light theme — Loading Header Bar ── */
+[data-theme="light"] .msg-loading-bar {
+  background: #ffffff;
+  border-color: #d0d8e8;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .msg-loading-bar__shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(34, 109, 180, 0.08) 30%,
+    rgba(34, 109, 180, 0.14) 50%,
+    rgba(34, 109, 180, 0.08) 70%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+}
+
 /* Inside sse-final-response, reset bg for thinking dots (both themes) */
 [data-theme="light"] .sse-final-response > .msg-thinking-dots {
   background: transparent;

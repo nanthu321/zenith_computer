@@ -8,7 +8,7 @@
  * This ensures theme switching is ALWAYS accessible — especially on pages
  * like /tasks and /workspace that previously lacked the toggle.
  *
- * Uses the shared ThemeContext for global state + localStorage persistence.
+ * Uses the shared ThemeContext for global state + server API persistence.
  */
 import React from 'react'
 import { useLocation } from 'react-router-dom'

@@ -324,8 +324,22 @@ export const workspaceApi = {
   readFile: (project, path) =>
     req("GET", `/projects/${encodeURIComponent(project)}/file?path=${encodeURIComponent(path)}`),
 
-  writeFile: (project, path, content) =>
-    req("PUT", `/projects/${encodeURIComponent(project)}/file`, { path, content }),
+  writeFile: async (project, path, content) => {
+    // Ensure parent directories exist by attempting to create them first.
+    // This prevents failures when creating files in nested paths that
+    // don't exist yet (e.g., "src/components/Button.jsx" when "src/components/" is missing).
+    if (path && path.includes("/")) {
+      const parentPath = path.substring(0, path.lastIndexOf("/"));
+      if (parentPath) {
+        try {
+          await req("POST", `/projects/${encodeURIComponent(project)}/folder`, { path: parentPath });
+        } catch (_) {
+          // Folder may already exist — ignore errors
+        }
+      }
+    }
+    return req("PUT", `/projects/${encodeURIComponent(project)}/file`, { path, content });
+  },
 
   deleteFile: (project, path) =>
     req("DELETE", `/projects/${encodeURIComponent(project)}/file?path=${encodeURIComponent(path)}`),
@@ -333,8 +347,23 @@ export const workspaceApi = {
   renameFile: (project, from, to) =>
     req("POST", `/projects/${encodeURIComponent(project)}/file/rename`, { from, to }),
 
-  createFolder: (project, path) =>
-    req("POST", `/projects/${encodeURIComponent(project)}/folder`, { path }),
+  createFolder: async (project, path) => {
+    // For nested paths like "src/components/utils", ensure parent directories exist
+    // by creating each level. Some backends don't support recursive folder creation.
+    if (path && path.includes("/")) {
+      const segments = path.split("/");
+      let currentPath = "";
+      for (let i = 0; i < segments.length - 1; i++) {
+        currentPath = currentPath ? `${currentPath}/${segments[i]}` : segments[i];
+        try {
+          await req("POST", `/projects/${encodeURIComponent(project)}/folder`, { path: currentPath });
+        } catch (_) {
+          // Parent folder may already exist — ignore errors
+        }
+      }
+    }
+    return req("POST", `/projects/${encodeURIComponent(project)}/folder`, { path });
+  },
 
   // ── Code Execution (compile & run) ──
   /**
@@ -411,39 +440,65 @@ try {
   },
 
   // ── Download ZIP ──
+  // Spec route: GET /api/project-download/{projectId}
+  // Fallback:   GET /api/projects/{project}/download (legacy)
   downloadProject: (project) => {
     const token = getCookie("zenith_token");
     if (!token) {
       handleUnauthorized();
       return;
     }
-    const url = `/api/projects/${encodeURIComponent(project)}/download`;
     const dlHeaders = { Authorization: `Bearer ${token}` };
     const uid = getUserId();
     if (uid) dlHeaders["X-User-Id"] = uid;
 
-    fetch(url, { headers: dlHeaders })
+    // Primary URL per API spec
+    const primaryUrl = `/api/project-download/${encodeURIComponent(project)}`;
+    // Legacy fallback URL
+    const fallbackUrl = `/api/projects/${encodeURIComponent(project)}/download`;
+
+    const triggerDownload = (blob) => {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${project}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    };
+
+    fetch(primaryUrl, { headers: dlHeaders })
       .then((r) => {
         if (r.status === 401) {
           handleUnauthorized();
           throw new Error("Unauthorized");
         }
-        if (!r.ok) throw new Error(`Download failed: ${r.status}`);
+        if (!r.ok) {
+          // Primary URL failed — try fallback
+          console.warn(`[workspace] Primary download URL failed (${r.status}), trying fallback...`);
+          throw new Error(`Primary download failed: ${r.status}`);
+        }
         return r.blob();
       })
-      .then((blob) => {
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = `${project}.zip`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(a.href);
-      })
-      .catch((err) => {
-        if (err.message === "Unauthorized") return;
-        console.error("[workspace] Download failed:", err);
-        console.error("[workspace] Download failed:", err.message);
+      .then(triggerDownload)
+      .catch((primaryErr) => {
+        if (primaryErr.message === "Unauthorized") return;
+
+        // Fallback to legacy URL
+        fetch(fallbackUrl, { headers: dlHeaders })
+          .then((r) => {
+            if (r.status === 401) {
+              handleUnauthorized();
+              throw new Error("Unauthorized");
+            }
+            if (!r.ok) throw new Error(`Download failed: ${r.status}`);
+            return r.blob();
+          })
+          .then(triggerDownload)
+          .catch((fallbackErr) => {
+            if (fallbackErr.message === "Unauthorized") return;
+            console.error("[workspace] Download failed (both URLs):", fallbackErr.message);
+          });
       });
   },
 };

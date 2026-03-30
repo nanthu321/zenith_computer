@@ -43,6 +43,13 @@ const FETCH_THROTTLE_MS = 10_000 // 10 seconds minimum between API calls
 const MAX_ERROR_BACKOFF = 4 // up to 4x the base interval
 
 /* ── Normalize raw task from any API shape → canonical object ── */
+/* Backend endpoints:
+ *   GET  /api/tasks              — list all tasks
+ *   GET  /api/tasks/{taskId}     — single task with run_logs
+ *   POST /api/task-cancel/{taskId} — cancel a task
+ *   GET  /api/task-download/{taskId} — download task output
+ *   GET  /api/tasks/notifications — SSE live updates
+ */
 function normalizeTask(raw) {
   if (!raw || typeof raw !== 'object') return null
   const status = raw.status || TASK_STATUS.SCHEDULED
@@ -55,9 +62,11 @@ function normalizeTask(raw) {
     total_runs:       raw.total_runs        ?? raw.max_runs       ?? 0,
     completed_runs:   raw.completed_runs    ?? 0,
     started_at:       raw.started_at        || raw.created_at     || null,
+    created_at:       raw.created_at        || raw.started_at     || null,
     ends_at:          raw.ends_at           || raw.end_time        || null,
     next_run:         raw.next_run                                 || null,
     output_file:      raw.output_file                              || null,
+    run_logs:         raw.run_logs                                 || [],
     is_active:        raw.is_active         ?? (
       status === TASK_STATUS.RUNNING ||
       status === TASK_STATUS.SCHEDULED
@@ -219,55 +228,69 @@ export function useTasks() {
   }, [])
 
   const cancelTask = useCallback(async (taskId) => {
-    // Optimistic update
-    setTasks(prev =>
-      prev.map(t =>
+    // Capture original task state before optimistic update so we can revert
+    let originalTask = null
+    setTasks(prev => {
+      originalTask = prev.find(t => t.task_id === taskId) || null
+      return prev.map(t =>
         t.task_id === taskId
           ? { ...t, status: TASK_STATUS.CANCELLED, is_active: false }
           : t
       )
-    )
+    })
     try {
       // Actual backend route: POST /api/task-cancel/{taskId}
       await apiFetch(`/api/task-cancel/${encodeURIComponent(taskId)}`, { method: 'POST' })
     } catch (err) {
-      // Revert optimistic update on failure
-      setTasks(prev =>
-        prev.map(t =>
-          t.task_id === taskId
-            ? { ...t, status: TASK_STATUS.RUNNING, is_active: true }
-            : t
+      // If the backend says "not found" (404), the task was already
+      // cancelled / completed / removed server-side.
+      // Keep the UI in the cancelled state — do NOT revert to running,
+      // which would re-expose the Cancel button and let the user click
+      // it again (causing repeated 404s).
+      const isNotFound = /not found|404/i.test(err.message)
+      if (isNotFound) {
+        // Leave the optimistic "cancelled" state as-is and refresh
+        // the task list in the background so the UI syncs with the server.
+        console.warn(`[useTasks] Task ${taskId} not found on server — keeping cancelled state`)
+        // Don't throw — this is not a user-facing error
+        return
+      }
+
+      // For any other error, revert the optimistic update
+      if (originalTask) {
+        setTasks(prev =>
+          prev.map(t =>
+            t.task_id === taskId
+              ? { ...t, status: originalTask.status, is_active: originalTask.is_active }
+              : t
+          )
         )
-      )
+      }
       throw err
     }
   }, [])
 
   /**
-   * Add a new task via the backend API.
-   * POST /api/tasks
+   * Register a newly-created task in local state.
    *
-   * @param {Object} taskData — Task creation payload
-   * @returns {Promise<Object>} Normalized task object
+   * Note: There is no POST /api/tasks endpoint on the backend.
+   * Tasks are created server-side by the AI agent's `schedule_task` tool.
+   * This method is used to add the task to local state after the agent
+   * confirms creation (via SSE tool_result), avoiding a full re-fetch.
+   *
+   * @param {Object} taskData — Raw task data from the schedule_task tool result
+   * @returns {Object|null} Normalized task object
    */
-  const addNewTask = useCallback(async (taskData) => {
-    try {
-      const raw = await apiFetch('/api/tasks', {
-        method: 'POST',
-        body: JSON.stringify(taskData),
+  const addNewTask = useCallback((taskData) => {
+    const normalized = normalizeTask(taskData)
+    if (normalized && normalized.task_id) {
+      setTasks(prev => {
+        const exists = prev.some(t => t.task_id === normalized.task_id)
+        if (exists) return prev
+        return [normalized, ...prev]
       })
-      const normalized = normalizeTask(raw)
-      if (normalized && normalized.task_id) {
-        setTasks(prev => {
-          const exists = prev.some(t => t.task_id === normalized.task_id)
-          if (exists) return prev
-          return [normalized, ...prev]
-        })
-      }
-      return normalized
-    } catch (err) {
-      throw err
     }
+    return normalized
   }, [])
 
   const downloadTaskFile = useCallback((taskId) => {

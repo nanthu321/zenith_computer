@@ -476,15 +476,7 @@
   font-size: 0.8rem;
 }
 
-.pm-btn-danger {
-  background: rgba(239, 68, 68, 0.15);
-  color: #f87171;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-}
 
-.pm-btn-danger:hover {
-  background: rgba(239, 68, 68, 0.25);
-}
 
 /* ═══════════════════════════════════════════════════════════
    SETTINGS MODAL
@@ -1208,26 +1200,7 @@
   font-weight: 600;
 }
 
-.pm-account-danger {
-  padding: 20px;
-  background: rgba(239, 68, 68, 0.06);
-  border: 1px solid rgba(239, 68, 68, 0.15);
-  border-radius: var(--radius-md);
-}
 
-.pm-account-danger h4 {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #f87171;
-  margin-bottom: 6px;
-}
-
-.pm-account-danger p {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  line-height: 1.5;
-  margin-bottom: 14px;
-}
 
 /* ═══════════════════════════════════════════════════════════
    HELP CENTER MODAL

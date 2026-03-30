@@ -5,6 +5,19 @@ import TaskToastContainer   from "./TaskToast";
 import useTaskNotifications from "../../hooks/useTaskNotifications";
 import { tasksApi }         from "../../api/tasks";
 
+/**
+ * TaskManager — Full task management UI with list, detail, and live updates.
+ *
+ * Backend API endpoints used:
+ *   GET  /api/tasks                    — List all tasks (via TaskList → tasksApi.listTasks)
+ *   GET  /api/tasks/{taskId}           — Task detail + run_logs (via TaskDetail → tasksApi.getTask)
+ *   POST /api/task-cancel/{taskId}     — Cancel task (via TaskDetail → tasksApi.cancelTask)
+ *   GET  /api/task-download/{taskId}   — Download output (via tasksApi.downloadOutput)
+ *   GET  /api/tasks/notifications      — SSE live updates (via useTaskNotifications)
+ *
+ * Note: Task creation is done via the AI agent's schedule_task tool, not a direct API call.
+ */
+
 let _toastId = 0;
 function nextToastId() { return ++_toastId; }
 
@@ -14,9 +27,8 @@ export default function TaskManager() {
   const [toasts,        setToasts]        = useState([]);
   // Map of task_id → { run_number, status } for live row highlights
   const [liveUpdates,   setLiveUpdates]   = useState({});
-  // Add task form state
+  // Add task info panel state
   const [showAddForm,   setShowAddForm]   = useState(false);
-  const [addingTask,    setAddingTask]    = useState(false);
 
   function addToast(toast) {
     setToasts((prev) => [...prev, { id: nextToastId(), ...toast }]);
@@ -100,34 +112,6 @@ export default function TaskManager() {
     onCompleted: handleCompleted,
   });
 
-  // ── Add Task Handler ──────────────────────────────────────────────────────
-
-  const handleAddTask = useCallback(async (taskData) => {
-    setAddingTask(true);
-    try {
-      const result = await tasksApi.addTask(taskData);
-      setShowAddForm(false);
-      bumpRefresh();
-      addToast({
-        type:     "success",
-        title:    "Task scheduled! ⏰",
-        message:  `"${taskData.description || 'New task'}" has been scheduled.`,
-        duration: 5000,
-      });
-      return result;
-    } catch (err) {
-      addToast({
-        type:     "error",
-        title:    "Failed to add task",
-        message:  err.message || "Could not schedule the task. Please try again.",
-        duration: 7000,
-      });
-      throw err;
-    } finally {
-      setAddingTask(false);
-    }
-  }, []);
-
   // ── Cancel Task Handler (from detail panel) ──────────────────────────────
 
   const handleCancelFromDetail = useCallback(async () => {
@@ -155,13 +139,33 @@ export default function TaskManager() {
           </div>
         </div>
 
-        {/* ── Add Task Form (inline) ── */}
+        {/* ── Add Task Info Panel (inline) ── */}
         {showAddForm && (
-          <AddTaskForm
-            onSubmit={handleAddTask}
-            onCancel={() => setShowAddForm(false)}
-            isSubmitting={addingTask}
-          />
+          <div style={s.addForm}>
+            <div style={s.addFormTitle}>Schedule a New Task</div>
+            <div style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.5 }}>
+              Tasks are created through the AI agent. Go to the chat and ask something like:
+            </div>
+            <div style={{
+              fontSize: 13, fontStyle: "italic",
+              color: "var(--color-text-primary)",
+              background: "var(--color-background-primary)",
+              padding: "8px 12px", borderRadius: 6,
+              border: "1px solid var(--color-border-tertiary)",
+            }}>
+              "Check gold prices every 3 hours"<br />
+              "Search tech news every morning"<br />
+              "Monitor website uptime every 30 minutes"
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
+              <button
+                onClick={() => setShowAddForm(false)}
+                style={s.addFormCancelBtn}
+              >
+                Close
+              </button>
+            </div>
+          </div>
         )}
 
         <div style={{ overflow: "auto", flex: 1 }}>
@@ -184,146 +188,6 @@ export default function TaskManager() {
 
       <TaskToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
-  );
-}
-
-/* ── Add Task Inline Form ─────────────────────────────────────────────────── */
-
-function AddTaskForm({ onSubmit, onCancel, isSubmitting }) {
-  const [description, setDescription] = useState("");
-  const [intervalValue, setIntervalValue] = useState("1");
-  const [intervalUnit, setIntervalUnit] = useState("hours");
-  const [totalRuns, setTotalRuns] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const [error, setError] = useState(null);
-
-  const unitMultipliers = {
-    seconds: 1,
-    minutes: 60,
-    hours: 3600,
-    days: 86400,
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError(null);
-
-    if (!description.trim()) {
-      setError("Please enter a task description");
-      return;
-    }
-
-    const intervalNum = parseFloat(intervalValue);
-    if (isNaN(intervalNum) || intervalNum <= 0) {
-      setError("Please enter a valid interval");
-      return;
-    }
-
-    const intervalSeconds = Math.round(intervalNum * unitMultipliers[intervalUnit]);
-
-    const taskData = {
-      description: description.trim(),
-      interval_seconds: intervalSeconds,
-      ...(totalRuns && parseInt(totalRuns) > 0 ? { total_runs: parseInt(totalRuns) } : {}),
-      ...(prompt.trim() ? { prompt: prompt.trim() } : {}),
-    };
-
-    try {
-      await onSubmit(taskData);
-      // Reset form on success
-      setDescription("");
-      setIntervalValue("1");
-      setIntervalUnit("hours");
-      setTotalRuns("");
-      setPrompt("");
-    } catch (err) {
-      setError(err.message || "Failed to add task");
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} style={s.addForm}>
-      <div style={s.addFormTitle}>Schedule New Task</div>
-
-      {error && (
-        <div style={s.addFormError}>{error}</div>
-      )}
-
-      <input
-        type="text"
-        placeholder="Task description *"
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
-        style={s.addFormInput}
-        autoFocus
-        disabled={isSubmitting}
-      />
-
-      <textarea
-        placeholder="Prompt / instructions for the AI agent (optional)"
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        style={{ ...s.addFormInput, minHeight: 50, resize: "vertical", fontFamily: "inherit" }}
-        rows={2}
-        disabled={isSubmitting}
-      />
-
-      <div style={s.addFormRow}>
-        <label style={s.addFormLabel}>Interval:</label>
-        <input
-          type="number"
-          min="1"
-          step="1"
-          value={intervalValue}
-          onChange={(e) => setIntervalValue(e.target.value)}
-          style={{ ...s.addFormInput, width: 60, flex: "none" }}
-          disabled={isSubmitting}
-        />
-        <select
-          value={intervalUnit}
-          onChange={(e) => setIntervalUnit(e.target.value)}
-          style={s.addFormSelect}
-          disabled={isSubmitting}
-        >
-          <option value="seconds">Seconds</option>
-          <option value="minutes">Minutes</option>
-          <option value="hours">Hours</option>
-          <option value="days">Days</option>
-        </select>
-      </div>
-
-      <div style={s.addFormRow}>
-        <label style={s.addFormLabel}>Max runs:</label>
-        <input
-          type="number"
-          min="0"
-          step="1"
-          placeholder="∞ (unlimited)"
-          value={totalRuns}
-          onChange={(e) => setTotalRuns(e.target.value)}
-          style={{ ...s.addFormInput, flex: 1 }}
-          disabled={isSubmitting}
-        />
-      </div>
-
-      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
-        <button
-          type="button"
-          onClick={onCancel}
-          style={s.addFormCancelBtn}
-          disabled={isSubmitting}
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          style={s.addFormSubmitBtn}
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? "Scheduling…" : "⏰ Schedule Task"}
-        </button>
-      </div>
-    </form>
   );
 }
 
@@ -364,7 +228,7 @@ const s = {
     display: "flex", alignItems: "center", justifyContent: "center",
     transition: "all 0.15s",
   },
-  /* ── Add Task Form Styles ── */
+  /* ── Add Task Info Panel Styles ── */
   addForm: {
     padding: "12px 14px",
     borderBottom: "1px solid var(--color-border-tertiary)",
@@ -378,45 +242,11 @@ const s = {
     color: "var(--color-text-secondary)",
     marginBottom: 2,
   },
-  addFormError: {
-    fontSize: 12, color: "#ef4444",
-    background: "rgba(239,68,68,0.08)",
-    padding: "6px 10px", borderRadius: 6,
-  },
-  addFormInput: {
-    padding: "7px 10px", borderRadius: 6,
-    border: "1px solid var(--color-border-tertiary)",
-    background: "var(--color-background-primary)",
-    color: "var(--color-text-primary)",
-    fontSize: 13, outline: "none",
-    width: "100%", boxSizing: "border-box",
-  },
-  addFormSelect: {
-    padding: "7px 8px", borderRadius: 6,
-    border: "1px solid var(--color-border-tertiary)",
-    background: "var(--color-background-primary)",
-    color: "var(--color-text-primary)",
-    fontSize: 13, outline: "none", cursor: "pointer",
-  },
-  addFormRow: {
-    display: "flex", alignItems: "center", gap: 8,
-  },
-  addFormLabel: {
-    fontSize: 12, color: "var(--color-text-secondary)",
-    flexShrink: 0, minWidth: 60,
-  },
   addFormCancelBtn: {
     padding: "6px 12px", borderRadius: 6, fontSize: 12,
     fontWeight: 500, cursor: "pointer",
     background: "transparent",
     color: "var(--color-text-secondary)",
     border: "1px solid var(--color-border-tertiary)",
-  },
-  addFormSubmitBtn: {
-    padding: "6px 14px", borderRadius: 6, fontSize: 12,
-    fontWeight: 500, cursor: "pointer",
-    background: "rgba(99,102,241,0.12)",
-    color: "#6366f1",
-    border: "1px solid rgba(99,102,241,0.3)",
   },
 };

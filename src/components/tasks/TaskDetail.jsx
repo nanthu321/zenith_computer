@@ -177,7 +177,7 @@ export default function TaskDetail({ task: taskSummary, onCancelled }) {
       {/* ── Stats grid ── */}
       <div style={s.statsGrid}>
         <StatCard label="Status"    value={task.status}     color={STATUS_COLOR[task.status]} />
-        <StatCard label="Interval"  value={formatInterval(task.interval_secs)} />
+        <StatCard label="Interval"  value={formatInterval(task.interval_seconds || task.interval_secs)} />
         <StatCard label="Runs done" value={`${task.completed_runs || 0} / ${task.total_runs || "∞"}`} />
         <StatCard label="Ends at"   value={formatDate(task.ends_at)} />
         {task.is_active && task.next_run && (

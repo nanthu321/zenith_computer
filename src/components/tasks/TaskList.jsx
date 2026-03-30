@@ -121,7 +121,7 @@ export default function TaskList({ selectedTaskId, onSelect, refreshSignal, live
 
             {/* Meta row */}
             <div style={s.rowMeta}>
-              <span>{formatInterval(task.interval_secs)}</span>
+              <span>{formatInterval(task.interval_seconds || task.interval_secs)}</span>
               {/* ── Live run progress badge ── */}
               {live && (
                 <span style={{

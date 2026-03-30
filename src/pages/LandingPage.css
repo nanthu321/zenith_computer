@@ -1642,7 +1642,7 @@
 
 /* ── ZenithLogo.webp image styles ── */
 .cta-logo {
-  width:3rem ;
+  width:5rem ;
   border-radius: 12px;
   object-fit: contain;
 }

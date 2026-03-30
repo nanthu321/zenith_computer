@@ -8,7 +8,7 @@ import './ThemeToggle.css'
  *
  * Shows Sun when in light mode, Moon when in dark mode.
  * Clicking toggles between Light and Dark.
- * Theme persists via localStorage + server sync (handled by ThemeContext).
+ * Theme persists via server API (GET/PUT /api/auth/theme), handled by ThemeContext.
  *
  * Props:
  *   size      — icon size: 'sm' (default) | 'md' | 'lg'

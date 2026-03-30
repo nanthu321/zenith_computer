@@ -37,6 +37,12 @@ export function TasksProvider({ children }) {
   const isFetchingRef = useRef(false)
 
   // ── Normalize a raw API task object → canonical shape ──────────────────
+  // Backend endpoints:
+  //   GET  /api/tasks              — list all tasks
+  //   GET  /api/tasks/{taskId}     — single task with run_logs
+  //   POST /api/task-cancel/{taskId} — cancel a task
+  //   GET  /api/task-download/{taskId} — download task output
+  //   GET  /api/tasks/notifications — SSE live updates
   const normalizeTask = (raw) => {
     if (!raw || typeof raw !== 'object') return null
     return {
@@ -47,9 +53,11 @@ export function TasksProvider({ children }) {
       total_runs:      raw.total_runs     ?? raw.max_runs        ?? 0,
       completed_runs:  raw.completed_runs ?? 0,
       started_at:      raw.started_at     || raw.created_at      || null,
+      created_at:      raw.created_at     || raw.started_at      || null,
       ends_at:         raw.ends_at        || raw.end_time         || null,
       next_run:        raw.next_run                               || null,
       output_file:     raw.output_file                            || null,
+      run_logs:        raw.run_logs                               || [],
       is_active:       raw.is_active      ?? (
         raw.status === TASK_STATUS.RUNNING ||
         raw.status === TASK_STATUS.SCHEDULED
@@ -145,37 +153,46 @@ export function TasksProvider({ children }) {
   // ── Cancel a task ────────────────────────────────────────────────────────
   // Actual backend route: POST /api/task-cancel/{taskId}
   const cancelTask = useCallback(async (taskId) => {
+    // Optimistic update — mark as cancelled immediately
+    setTasks(prev =>
+      prev.map(t =>
+        t.task_id === taskId ? { ...t, status: TASK_STATUS.CANCELLED, is_active: false } : t
+      )
+    )
     try {
       await apiFetch(`/api/task-cancel/${encodeURIComponent(taskId)}`, { method: 'POST' })
+    } catch (err) {
+      // If the backend says "not found" (404), the task was already
+      // cancelled / completed / removed — keep the cancelled state
+      const isNotFound = /not found|404/i.test(err.message)
+      if (isNotFound) {
+        console.warn(`[TasksContext] Task ${taskId} not found on server — keeping cancelled state`)
+        return
+      }
+      // For other errors, revert and re-throw
       setTasks(prev =>
         prev.map(t =>
-          t.task_id === taskId ? { ...t, status: TASK_STATUS.CANCELLED, is_active: false } : t
+          t.task_id === taskId ? { ...t, status: TASK_STATUS.RUNNING, is_active: true } : t
         )
       )
-    } catch (err) {
-      throw err // let caller handle
+      throw err
     }
   }, [])
 
-  // ── Add a new task via API ───────────────────────────────────────────────
-  const addNewTask = useCallback(async (taskData) => {
-    try {
-      const result = await apiFetch('/api/tasks', {
-        method: 'POST',
-        body: JSON.stringify(taskData),
+  // ── Register a newly-created task in local state ─────────────────────────
+  // Note: There is no POST /api/tasks endpoint on the backend.
+  // Tasks are created server-side by the AI agent's `schedule_task` tool.
+  // This method adds the task to local state after agent confirmation.
+  const addNewTask = useCallback((taskData) => {
+    const normalized = normalizeTask(taskData)
+    if (normalized && normalized.task_id) {
+      setTasks(prev => {
+        const exists = prev.some(t => t.task_id === normalized.task_id)
+        if (exists) return prev
+        return [normalized, ...prev]
       })
-      const normalized = normalizeTask(result)
-      if (normalized && normalized.task_id) {
-        setTasks(prev => {
-          const exists = prev.some(t => t.task_id === normalized.task_id)
-          if (exists) return prev
-          return [normalized, ...prev]
-        })
-      }
-      return normalized
-    } catch (err) {
-      throw err
     }
+    return normalized
   }, [])
 
   // ── Update a task in state (from SSE task_run_update) ───────────────────

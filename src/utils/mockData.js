@@ -274,56 +274,9 @@ print(f"Largest value: {fibs[-1]}")`,
 }
 
 // ── Static Tasks ──
-export const MOCK_TASKS = [
-  {
-    task_id: 'sched_a1b2c3d4',
-    description: 'Track gold price every 3 hours and log to Excel',
-    status: 'running',
-    interval_seconds: 10800,
-    total_runs: 56,
-    completed_runs: 14,
-    output_file: 'gold_prices.xlsx',
-    started_at: '2025-06-10T08:30:00.000Z',
-    ends_at: '2025-06-17T08:30:00.000Z',
-    created_at: '2025-06-10T08:30:00.000Z',
-  },
-  {
-    task_id: 'sched_b2c3d4e5',
-    description: 'Track Bitcoin price every hour',
-    status: 'completed',
-    interval_seconds: 3600,
-    total_runs: 72,
-    completed_runs: 72,
-    output_file: 'bitcoin_prices.xlsx',
-    started_at: '2025-06-05T16:45:00.000Z',
-    ends_at: '2025-06-08T16:45:00.000Z',
-    created_at: '2025-06-05T16:45:00.000Z',
-  },
-  {
-    task_id: 'sched_c3d4e5f6',
-    description: 'Daily weather report for Mumbai',
-    status: 'scheduled',
-    interval_seconds: 86400,
-    total_runs: 30,
-    completed_runs: 0,
-    output_file: null,
-    started_at: null,
-    ends_at: '2025-07-10T09:00:00.000Z',
-    created_at: '2025-06-10T09:00:00.000Z',
-  },
-  {
-    task_id: 'sched_d4e5f6g7',
-    description: 'S&P 500 index tracker every 6 hours',
-    status: 'cancelled',
-    interval_seconds: 21600,
-    total_runs: 28,
-    completed_runs: 8,
-    output_file: 'sp500_prices.xlsx',
-    started_at: '2025-06-03T12:00:00.000Z',
-    ends_at: '2025-06-10T12:00:00.000Z',
-    created_at: '2025-06-03T12:00:00.000Z',
-  },
-]
+// Empty by default — tasks are fetched from the backend database only.
+// No hardcoded/default tasks should appear in the UI.
+export const MOCK_TASKS = []
 
 // ── Static Projects ──
 export const MOCK_PROJECTS = [
@@ -360,6 +313,33 @@ let _nextMessageId = 9000
 
 // ── Mock auth store ──
 let _currentUser = null
+
+// ── Mock theme store (per user) ──
+// Maps user_id → theme preference ('dark' | 'light' | 'system')
+const _userThemes = {}
+
+// ── Mock OAuth store (per user) ──
+// Maps user_id → array of linked provider objects
+const _userOAuthLinks = {}
+
+// ─────────────────────────────────────────────────────────
+//  Helper: get current mock user (shared by multiple handlers)
+// ─────────────────────────────────────────────────────────
+function _getCurrentMockUser() {
+  if (_currentUser) return _currentUser
+  const token = getCookie('zenith_token')
+  if (token && token.startsWith('mock_jwt_token_')) {
+    const userId = parseInt(token.split('_')[3])
+    const user = MOCK_USERS.find(u => u.user_id === userId)
+    if (user) {
+      _currentUser = { user_id: user.user_id, username: user.username, email: user.email }
+      return _currentUser
+    }
+  }
+  // Default to demo user for easy onboarding
+  _currentUser = { user_id: 1, username: 'demo', email: 'demo@zenith.com' }
+  return _currentUser
+}
 
 // ─────────────────────────────────────────────────────────
 //  Mock API Handlers
@@ -415,6 +395,206 @@ export const mockHandlers = {
     return _currentUser
   },
 
+  // GET /api/auth/theme — Get current user's theme preference
+  'GET /api/auth/theme': async () => {
+    if (!_currentUser) {
+      // Try to recover user from token (same as GET /api/auth/me)
+      const token = getCookie('zenith_token')
+      if (token && token.startsWith('mock_jwt_token_')) {
+        const userId = parseInt(token.split('_')[3])
+        const user = MOCK_USERS.find(u => u.user_id === userId)
+        if (user) _currentUser = { user_id: user.user_id, username: user.username, email: user.email }
+      }
+    }
+    if (!_currentUser) throw new Error('User not found')
+    const theme = _userThemes[_currentUser.user_id] || 'dark'
+    return { theme }
+  },
+
+  // PUT /api/auth/theme — Update user's theme preference
+  'PUT /api/auth/theme': async (body) => {
+    if (!body || typeof body !== 'object' || !body.theme) {
+      throw new Error('Missing required field: "theme"')
+    }
+    const theme = body.theme
+    if (!theme || typeof theme !== 'string' || !theme.trim()) {
+      throw new Error('"theme" must not be empty')
+    }
+    const allowed = ['light', 'dark', 'system']
+    if (!allowed.includes(theme)) {
+      throw new Error(`Invalid theme "${theme}". Allowed values: [${allowed.join(', ')}]`)
+    }
+    if (!_currentUser) {
+      const token = getCookie('zenith_token')
+      if (token && token.startsWith('mock_jwt_token_')) {
+        const userId = parseInt(token.split('_')[3])
+        const user = MOCK_USERS.find(u => u.user_id === userId)
+        if (user) _currentUser = { user_id: user.user_id, username: user.username, email: user.email }
+      }
+    }
+    if (!_currentUser) throw new Error('User not found')
+    _userThemes[_currentUser.user_id] = theme
+    return { message: 'Theme updated', theme }
+  },
+
+  // ── OAuth Endpoints ──
+
+  // GET /api/auth/oauth/link — List linked OAuth providers
+  'GET /api/auth/oauth/link': async () => {
+    const user = _getCurrentMockUser()
+    if (!user) throw new Error('Unauthorized')
+    const links = _userOAuthLinks[user.user_id] || []
+    return [...links]
+  },
+
+  // POST /api/auth/oauth/link — Save provider credentials / start linking
+  'POST /api/auth/oauth/link': async (body) => {
+    const user = _getCurrentMockUser()
+    if (!user) throw new Error('Unauthorized')
+    if (!body || !body.provider) throw new Error('Missing required field: "provider"')
+
+    const providerId = body.provider
+    if (!_userOAuthLinks[user.user_id]) _userOAuthLinks[user.user_id] = []
+
+    // Check if already linked
+    const existing = _userOAuthLinks[user.user_id].find(p => p.provider === providerId)
+
+    if (body.client_id && body.client_secret) {
+      // OAuth provider (e.g. Zoho) — in real backend this returns an auth_url
+      // In mock mode, simulate immediate connection
+      const link = {
+        provider: providerId,
+        status: 'connected',
+        linked_at: new Date().toISOString(),
+        client_id: body.client_id,
+        has_credentials: true,
+      }
+      if (existing) {
+        Object.assign(existing, link)
+      } else {
+        _userOAuthLinks[user.user_id].push(link)
+      }
+      return { provider: providerId, status: 'connected', message: `${providerId} linked successfully` }
+    } else if (body.api_key) {
+      // API-key provider (e.g. GitHub, Slack)
+      const link = {
+        provider: providerId,
+        status: 'connected',
+        linked_at: new Date().toISOString(),
+        has_credentials: true,
+        auth_type: body.header_type || 'Bearer',
+      }
+      if (existing) {
+        Object.assign(existing, link)
+      } else {
+        _userOAuthLinks[user.user_id].push(link)
+      }
+      return { provider: providerId, status: 'connected', message: `${providerId} linked successfully` }
+    }
+
+    throw new Error('Missing credentials: provide either client_id+client_secret or api_key')
+  },
+
+  // PUT /api/auth/oauth/link — Refresh access token for a provider
+  'PUT /api/auth/oauth/link': async (body) => {
+    const user = _getCurrentMockUser()
+    if (!user) throw new Error('Unauthorized')
+    if (!body || !body.provider) throw new Error('Missing required field: "provider"')
+
+    const links = _userOAuthLinks[user.user_id] || []
+    const existing = links.find(p => p.provider === body.provider)
+    if (!existing) throw new Error(`Provider "${body.provider}" is not linked`)
+
+    existing.refreshed_at = new Date().toISOString()
+    existing.status = 'connected'
+    return { provider: body.provider, status: 'connected', message: 'Token refreshed' }
+  },
+
+  // DELETE /api/auth/oauth/link?provider=... — Unlink a provider
+  // Note: matchMock handles query string extraction; this receives the full URL match
+  'DELETE /api/auth/oauth/link': async (providerId) => {
+    const user = _getCurrentMockUser()
+    if (!user) throw new Error('Unauthorized')
+    if (!providerId) throw new Error('Missing required query parameter: "provider"')
+
+    if (!_userOAuthLinks[user.user_id]) _userOAuthLinks[user.user_id] = []
+    const before = _userOAuthLinks[user.user_id].length
+    _userOAuthLinks[user.user_id] = _userOAuthLinks[user.user_id].filter(
+      p => p.provider !== providerId
+    )
+    const removed = _userOAuthLinks[user.user_id].length < before
+    if (!removed) throw new Error(`Provider "${providerId}" is not linked`)
+
+    return { provider: providerId, status: 'unlinked', message: `${providerId} disconnected` }
+  },
+
+  // GET /api/auth/oauth/callback — Browser OAuth callback
+  'GET /api/auth/oauth/callback': async () => {
+    // In mock mode, simulate a successful callback
+    return { provider: 'mock', status: 'connected', message: 'OAuth callback processed (mock)' }
+  },
+
+  // POST /api/auth/oauth/callback — Programmatic token exchange
+  'POST /api/auth/oauth/callback': async (body) => {
+    if (!body || !body.code) throw new Error('Missing required field: "code"')
+    const providerId = body.provider || 'unknown'
+    const user = _getCurrentMockUser()
+    if (!user) throw new Error('Unauthorized')
+
+    // Simulate successful exchange
+    if (!_userOAuthLinks[user.user_id]) _userOAuthLinks[user.user_id] = []
+    const existing = _userOAuthLinks[user.user_id].find(p => p.provider === providerId)
+    if (existing) {
+      existing.status = 'connected'
+      existing.linked_at = new Date().toISOString()
+    } else {
+      _userOAuthLinks[user.user_id].push({
+        provider: providerId,
+        status: 'connected',
+        linked_at: new Date().toISOString(),
+        has_credentials: true,
+      })
+    }
+    return { provider: providerId, status: 'connected', message: 'Token exchange successful (mock)' }
+  },
+
+  // POST /api/auth/oauth/zoho/init — Zoho-specific init/refresh
+  'POST /api/auth/oauth/zoho/init': async (body) => {
+    const user = _getCurrentMockUser()
+    if (!user) throw new Error('Unauthorized')
+
+    const links = _userOAuthLinks[user.user_id] || []
+    const existing = links.find(p => p.provider === 'zoho')
+
+    if (existing && existing.status === 'connected') {
+      // Already linked — perform silent refresh
+      existing.refreshed_at = new Date().toISOString()
+      return { provider: 'zoho', status: 'connected', message: 'Zoho token refreshed silently' }
+    }
+
+    // Not linked yet — in real backend, would return an auth_url
+    // In mock mode, simulate immediate connection if credentials provided
+    if (body?.client_id && body?.client_secret) {
+      if (!_userOAuthLinks[user.user_id]) _userOAuthLinks[user.user_id] = []
+      _userOAuthLinks[user.user_id].push({
+        provider: 'zoho',
+        status: 'connected',
+        linked_at: new Date().toISOString(),
+        has_credentials: true,
+        client_id: body.client_id,
+      })
+      return { provider: 'zoho', status: 'connected', message: 'Zoho connected (mock)' }
+    }
+
+    // No credentials — return mock auth URL
+    return {
+      provider: 'zoho',
+      status: 'pending',
+      auth_url: 'https://accounts.zoho.com/oauth/v2/auth?client_id=mock&redirect_uri=mock&scope=mock&response_type=code',
+      message: 'Redirect user to auth_url to complete Zoho authorization',
+    }
+  },
+
   // GET /api/sessions
   'GET /api/sessions': async () => {
     return [..._sessions].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
@@ -445,33 +625,17 @@ export const mockHandlers = {
     return _messages[parseInt(sessionId)] || []
   },
 
-  // GET /api/tasks — list all tasks
+  // GET /api/tasks — list all tasks for authenticated user
   'GET /api/tasks': async () => {
     return [..._tasks]
   },
 
-  // POST /api/tasks — add/schedule a new task
-  'POST /api/tasks': async (body) => {
-    const newTask = {
-      task_id: `sched_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      description: body?.description || body?.prompt || 'New scheduled task',
-      status: 'scheduled',
-      interval_seconds: body?.interval_seconds || body?.interval_secs || 3600,
-      total_runs: body?.total_runs ?? 0,
-      completed_runs: 0,
-      output_file: null,
-      started_at: null,
-      ends_at: body?.ends_at || null,
-      created_at: new Date().toISOString(),
-      is_active: true,
-    }
-    _tasks.unshift(newTask)
-    return newTask
-  },
+  // Note: There is no POST /api/tasks endpoint on the backend.
+  // Tasks are created server-side by the AI agent's schedule_task tool.
 
   // POST /api/task-cancel/{taskId} — cancel a task
-  // (actual backend servlet route, NOT /api/tasks/{id}/cancel)
-  'POST /api/task-cancel': async (taskId) => {
+  // (mock key uses 'POST /api/tasks/cancel' for matchMock routing)
+  'POST /api/tasks/cancel': async (taskId) => {
     _tasks = _tasks.map(t =>
       t.task_id === taskId ? { ...t, status: 'cancelled', is_active: false } : t
     )
@@ -483,51 +647,7 @@ export const mockHandlers = {
     return [..._projects]
   },
 
-  // ── Chat Queue mock handlers ──
-  'POST /api/chat/queue': async (sessionId, body) => {
-    if (!_chatQueue[sessionId]) _chatQueue[sessionId] = []
-    const queue = _chatQueue[sessionId]
-    const item = {
-      id: _nextQueueId++,
-      userId: 1,
-      sessionId: parseInt(sessionId),
-      queuePosition: queue.length + 1,
-      deliveryMode: 'queued',
-      status: 'queued',
-      message: body?.message || '',
-      userMessageId: null,
-      assistantMessageId: null,
-      responseContent: null,
-      errorMessage: null,
-      createdAt: new Date().toISOString(),
-      startedAt: null,
-      completedAt: null,
-    }
-    queue.push(item)
-    // Auto-process after 3 seconds (mock)
-    setTimeout(() => {
-      item.status = 'processing'
-      item.startedAt = new Date().toISOString()
-      setTimeout(() => {
-        item.status = 'completed'
-        item.completedAt = new Date().toISOString()
-        item.responseContent = `Mock response for: "${item.message}"`
-        item.userMessageId = _nextMsgId++
-        item.assistantMessageId = _nextMsgId++
-      }, 2000)
-    }, 3000)
-    return item
-  },
-
-  'GET /api/chat/queue': async (sessionId) => {
-    return _chatQueue[sessionId] || []
-  },
-}
-
-// ── Chat Queue mock state ──
-let _chatQueue = {}   // sessionId -> queue items[]
-let _nextQueueId = 100
-let _nextMsgId = 9000
+  }
 
 // ─────────────────────────────────────────────────────────
 //  SSE Stream Simulation for Chat

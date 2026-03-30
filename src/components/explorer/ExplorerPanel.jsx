@@ -132,7 +132,17 @@ function FileNode({ node, project, depth, onFileSelect, onToast }) {
           ) : (
             children.map((child) => {
               const childName = child.name || child.filename || "";
-              const childPath = child.path || (node.path ? `${node.path}/${childName}` : childName);
+              // Build the correct full path for this child.
+              // The API may return a full path, a relative-only name, or nothing.
+              // We prefer building from parent + name to avoid duplicate segments,
+              // unless the API returns a full path already prefixed by the parent path.
+              const parentPrefix = node.path ? `${node.path}/` : "";
+              let childPath;
+              if (child.path && child.path.startsWith(parentPrefix) && child.path !== childName) {
+                childPath = child.path;
+              } else {
+                childPath = node.path ? `${node.path}/${childName}` : childName;
+              }
               return (
                 <FileNode
                   key={childName}

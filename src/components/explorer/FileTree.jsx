@@ -346,8 +346,15 @@ function TreeNode({
                   } else {
                     await onNewFile(path, true);
                   }
-                  // Always refresh this folder's children after successful create
-                  await loadChildren();
+                  // Always refresh this folder's children after successful create.
+                  // onNewFile/onNewFolder already call loadRoot() in the parent,
+                  // but we also need to refresh THIS node's children to show the
+                  // new entry in the subtree immediately.
+                  try {
+                    await loadChildren();
+                  } catch (_) {
+                    // Best-effort refresh — the parent loadRoot will catch it
+                  }
                 } catch (e) {
                   // errors handled by parent via onInlineError
                 }
@@ -359,9 +366,22 @@ function TreeNode({
           {children && children.length > 0 ? (
             children.map((child) => {
               const childName = child.name || child.filename || "";
-              const childPath = child.path
-                ? child.path
-                : (node.path ? `${node.path}/${childName}` : childName);
+              // Build the correct full path for this child.
+              // The API may return:
+              //   a) No path at all → build from parent: "parentPath/childName"
+              //   b) A relative path (just the name) → build from parent
+              //   c) A full path that already includes the parent prefix → use as-is
+              // We always prefer building from parent + name to avoid ambiguity,
+              // UNLESS the API returns a full path that already starts with the parent prefix.
+              const parentPrefix = node.path ? `${node.path}/` : "";
+              let childPath;
+              if (child.path && child.path.startsWith(parentPrefix) && child.path !== childName) {
+                // API returned a full path that includes the parent — use it directly
+                childPath = child.path;
+              } else {
+                // Build path from parent + child name (safest default)
+                childPath = node.path ? `${node.path}/${childName}` : childName;
+              }
 
               return (
                 <TreeNode
@@ -491,7 +511,7 @@ const FileTree = forwardRef(function FileTree({ project, selectedFile, onFileSel
     try {
       await workspaceApi.deleteFile(project, path);
       onFileDeleted?.(path);
-      loadRoot();
+      await loadRoot();
     } catch (e) {
       console.error("Delete failed:", e);
       showInlineError("Delete failed: " + e.message);
@@ -501,7 +521,7 @@ const FileTree = forwardRef(function FileTree({ project, selectedFile, onFileSel
   async function handleRename(from, to) {
     try {
       await workspaceApi.renameFile(project, from, to);
-      loadRoot();
+      await loadRoot();
     } catch (e) {
       console.error("Rename failed:", e);
       showInlineError("Rename failed: " + e.message);
@@ -515,10 +535,10 @@ const FileTree = forwardRef(function FileTree({ project, selectedFile, onFileSel
       try {
         await workspaceApi.writeFile(project, pathOrDir, "");
         const fileName = pathOrDir.split("/").pop();
-        // Note: nested TreeNode refreshes its own children after this resolves.
-        // loadRoot() is called for root-level files only (no parent folder).
-        const isRootFile = !pathOrDir.includes("/");
-        if (isRootFile) loadRoot();
+        // Always refresh root to keep the tree in sync — this handles both
+        // root-level files AND nested files (since the root listing may also
+        // reflect new child entries in some API implementations).
+        await loadRoot();
         onFileSelect({ name: fileName, path: pathOrDir, type: "file" });
       } catch (e) {
         console.error("Create file failed:", e);
@@ -536,9 +556,8 @@ const FileTree = forwardRef(function FileTree({ project, selectedFile, onFileSel
       // pathOrDir is the full path already
       try {
         await workspaceApi.createFolder(project, pathOrDir);
-        // Note: nested TreeNode refreshes its own children after this resolves.
-        const isRootFolder = !pathOrDir.includes("/");
-        if (isRootFolder) loadRoot();
+        // Always refresh root to keep the tree in sync
+        await loadRoot();
       } catch (e) {
         console.error("Create folder failed:", e);
         showInlineError("Create folder failed: " + e.message);

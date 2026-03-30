@@ -711,8 +711,6 @@ export default function MessageBubble({ message, isLast, agentEvents, artifacts,
     return renderMarkdown(message.content || '')
   }, [message.content, isUser])
 
-  const showCopyBtn = !message.isStreaming && !!message.content
-
   const livePhase = isStreamingNow
     ? deriveLivePhase(agentEvents, toolCalls, !!message.content)
     : null
@@ -777,6 +775,31 @@ export default function MessageBubble({ message, isLast, agentEvents, artifacts,
                 projectName={ps.projectName}
               />
             ))}
+          </div>
+        )}
+
+        {/* ── Tool Activity Summary (tool calls, live search, results) ── */}
+        {!isUser && (hasCompletedTools || (isStreamingNow && toolCalls.length > 0)) && (
+          <ToolActivitySummary
+            toolCalls={toolCalls}
+            agentEvents={agentEvents}
+            isStreaming={isStreamingNow}
+            onNavigate={handleOpenInExplorer}
+          />
+        )}
+
+        {/* ── Live Status Bar (thinking / tool phases during streaming) ── */}
+        {!isUser && isStreamingNow && livePhase && (
+          <LiveStatusBar phase={livePhase} />
+        )}
+
+        {/* ═══════════════════════════════════════════════════════
+            LOADING HEADER BAR — slim status bar above 3 dots
+            Visible only while waiting for first token (showTypingDots).
+            ═══════════════════════════════════════════════════════ */}
+        {showTypingDots && (
+          <div className="msg-loading-bar">
+            <div className="msg-loading-bar__shimmer" />
           </div>
         )}
 

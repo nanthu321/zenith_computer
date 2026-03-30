@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import './ProfileMenu.css'
 import zenithLogo from '../assets/ZenithLogo.webp'
 import { getPreference, savePreferenceAsync } from '../utils/preferences.js'
+import { useOAuth } from '../hooks/useOAuth.js'
 import ThemeToggle from './ThemeToggle.jsx'
 
 /* ═══════════════════════════════════════════════════════════
@@ -124,11 +125,21 @@ export default function ProfileMenu({ user, onLogout }) {
   const [prefSaved, setPrefSaved] = useState(false)
   const [prefSaving, setPrefSaving] = useState(false)
 
+  /* ── OAuth hook — manages linked providers via /api/auth/oauth/* endpoints ── */
+  const {
+    providers: oauthProviders,
+    loading: oauthLoading,
+    linkProvider: oauthLinkProvider,
+    unlinkProvider: oauthUnlinkProvider,
+    initZoho: oauthInitZoho,
+    getOperationState: oauthGetOperationState,
+  } = useOAuth()
+
   /* ── Connectors state ── */
-  const [connectedIds, setConnectedIds] = useState([])        // ids that are fully connected
   const [connectingId, setConnectingId] = useState(null)       // id whose form is open
   const [connectorForms, setConnectorForms] = useState({})     // { [id]: { field: value, ... } }
   const [connectorSaved, setConnectorSaved] = useState(null)   // id that just saved
+  const [connectorError, setConnectorError] = useState(null)   // error message for connector ops
   const [apiReferOpen, setApiReferOpen] = useState({})         // { [id]: bool }
 
   /* sync user data */
@@ -138,6 +149,25 @@ export default function ProfileMenu({ user, onLogout }) {
       setUsername(user.username || '')
     }
   }, [user])
+
+  /* ── Derive connected IDs from OAuth providers list ── */
+  const connectedIds = oauthProviders
+    .filter(p => p.status === 'connected' || p.status === 'active')
+    .map(p => p.provider || p.id)
+
+  /* ── Also restore form fields from preferences as fallback for display ── */
+  useEffect(() => {
+    const restoredForms = {}
+    DEFAULT_CONNECTORS.forEach(conn => {
+      const saved = getPreference(`connector_${conn.id}`)
+      if (saved && typeof saved === 'object') {
+        restoredForms[conn.id] = saved
+      }
+    })
+    if (Object.keys(restoredForms).length > 0) {
+      setConnectorForms(prev => ({ ...prev, ...restoredForms }))
+    }
+  }, [])
 
   /* ── Toggle menu ── */
   const toggleMenu = useCallback(() => {
@@ -199,7 +229,7 @@ export default function ProfileMenu({ user, onLogout }) {
   /* ── Connector helpers ── */
   const getDefaultFormFields = (conn) => {
     if (conn?.type === 'zoho') {
-      return { client_id: '', client_secret: '', redirect_url: '' }
+      return { client_id: '', client_secret: '', redirect_uri: '' }
     }
     if (conn?.authType === 'header') {
       return { api_key: '', header_type: '' }
@@ -216,7 +246,7 @@ export default function ProfileMenu({ user, onLogout }) {
 
   const openConnectorForm = (connector) => {
     if (!connectorForms[connector.id]) {
-      setConnectorForms(prev => ({ ...prev, [connector.id]: getDefaultFormFields() }))
+      setConnectorForms(prev => ({ ...prev, [connector.id]: getDefaultFormFields(connector) }))
     }
     setConnectingId(connector.id)
   }
@@ -225,24 +255,86 @@ export default function ProfileMenu({ user, onLogout }) {
     setConnectingId(null)
   }
 
-  const handleConnectorSave = (connId) => {
+  const handleConnectorSave = async (connId) => {
     const form = connectorForms[connId] || {}
     const conn = DEFAULT_CONNECTORS.find(c => c.id === connId)
-    if (conn?.type === 'zoho') {
-      if (!form.client_id?.trim() || !form.client_secret?.trim() || !form.redirect_url?.trim()) return
-    } else if (conn?.authType === 'header') {
-      if (!form.api_key?.trim() || !form.header_type?.trim()) return
-    } else {
-      if (!form.api_key?.trim()) return
+
+    // No frontend validation — send all input values as-is to the backend.
+    // The backend is the single source of truth for validation and business logic.
+    setConnectorError(null)
+
+    try {
+      console.log(`[connector] 🔼 Linking ${connId} via OAuth API...`)
+
+      // ── Step 1: Link provider via OAuth API ──
+      let result
+      if (conn?.type === 'zoho') {
+        // Use Zoho-specific init endpoint — send form values as-is
+        result = await oauthInitZoho({
+          client_id: form.client_id || '',
+          client_secret: form.client_secret || '',
+          redirect_uri: form.redirect_uri || '',
+        })
+
+        // If auth_url is returned, redirect user to complete OAuth flow
+        if (result?.auth_url) {
+          console.log(`[connector] 🔗 Zoho requires OAuth redirect:`, result.auth_url)
+          window.open(result.auth_url, '_blank', 'noopener,noreferrer')
+          // Don't mark as saved yet — callback will complete the flow
+          setConnectingId(null)
+          return
+        }
+      } else {
+        // For non-Zoho providers: send all form fields as-is
+        const credentials = { provider: connId, ...form }
+
+        result = await oauthLinkProvider(credentials)
+
+        // If auth_url is returned (OAuth provider), redirect
+        if (result?.auth_url) {
+          console.log(`[connector] 🔗 ${connId} requires OAuth redirect:`, result.auth_url)
+          window.open(result.auth_url, '_blank', 'noopener,noreferrer')
+          setConnectingId(null)
+          return
+        }
+      }
+
+      console.log(`[connector] ✅ ${connId} linked via OAuth API:`, result)
+
+      // ── Step 2: Also persist to preferences as a local backup ──
+      const prefKey = `connector_${connId}`
+      try {
+        await savePreferenceAsync(prefKey, form)
+        console.log(`[connector] ✅ ${connId} credentials also saved to preferences backup`)
+      } catch (prefErr) {
+        // Non-critical — OAuth API link succeeded, preferences backup is optional
+        console.warn(`[connector] ⚠️ Preferences backup failed (non-critical):`, prefErr.message)
+      }
+
+      setConnectorSaved(connId)
+      setTimeout(() => { setConnectorSaved(null); setConnectingId(null) }, 1500)
+    } catch (err) {
+      console.error(`[connector] ❌ Failed to link ${connId}:`, err.message)
+      setConnectorError(`Failed to connect ${conn?.name || connId}: ${err.message}`)
     }
-    setConnectedIds(prev => prev.includes(connId) ? prev : [...prev, connId])
-    setConnectorSaved(connId)
-    setTimeout(() => { setConnectorSaved(null); setConnectingId(null) }, 1500)
   }
 
-  const handleDisconnect = (connId) => {
-    setConnectedIds(prev => prev.filter(id => id !== connId))
-    setConnectorForms(prev => { const n = { ...prev }; delete n[connId]; return n })
+  const handleDisconnect = async (connId) => {
+    setConnectorError(null)
+    try {
+      console.log(`[connector] 🔌 Disconnecting ${connId} via OAuth API...`)
+      await oauthUnlinkProvider(connId)
+      console.log(`[connector] ✅ ${connId} disconnected via OAuth API`)
+
+      // Also clear from local form state and preferences
+      setConnectorForms(prev => { const n = { ...prev }; delete n[connId]; return n })
+      try {
+        await savePreferenceAsync(`connector_${connId}`, null)
+      } catch (_) { /* non-critical */ }
+    } catch (err) {
+      console.error(`[connector] ❌ Failed to disconnect ${connId}:`, err.message)
+      setConnectorError(`Failed to disconnect: ${err.message}`)
+    }
   }
 
   const toggleApiRefer = (connId) => {
@@ -471,20 +563,10 @@ export default function ProfileMenu({ user, onLogout }) {
                             await savePreferenceAsync('zenith_custom_instructions', personalizationText)
                             setPrefSaved(true)
                             setTimeout(() => setPrefSaved(false), 2000)
-                          } catch (err) {
+} catch (err) {
                             console.error('[ProfileMenu] Failed to save preferences:', err.message)
-                            // Determine if this is a transient server error or an auth issue
-                            const msg = err.message || ''
-                            const isAuthError = /unauthorized|401/i.test(msg)
-                            const isServerError = /^(5\d\d|502|503|Cannot reach|network)/i.test(msg)
-                            if (isAuthError) {
-                              alert('Your session has expired. Please log in again.')
-                            } else if (isServerError) {
-                              alert('The server is temporarily unavailable. Your preferences are saved locally and will sync when the server is back.')
-                            } else {
-                              alert('Failed to save preferences. Please try again.')
-                            }
-                          } finally {
+                            // Display backend error message as-is — no frontend interpretation
+                            alert(`Failed to save preferences: ${err.message}`)                          } finally {
                             setPrefSaving(false)
                           }
                         }}
@@ -507,6 +589,37 @@ export default function ProfileMenu({ user, onLogout }) {
                       </div>
                     </div>
 
+                    {/* Connector error banner */}
+                    {connectorError && (
+                      <div className="pm-connector-error-banner" style={{
+                        padding: '8px 12px', marginBottom: 12, borderRadius: 8,
+                        background: 'var(--danger-bg, rgba(239,68,68,0.1))',
+                        color: 'var(--danger-text, #ef4444)',
+                        fontSize: 13, lineHeight: 1.4,
+                        display: 'flex', alignItems: 'flex-start', gap: 8,
+                      }}>
+                        <span style={{ flex: 1 }}>⚠️ {connectorError}</span>
+                        <button
+                          onClick={() => setConnectorError(null)}
+                          style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            color: 'inherit', padding: '0 2px', fontSize: 16,
+                            lineHeight: 1, flexShrink: 0, opacity: 0.7,
+                          }}
+                          aria-label="Dismiss error"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Loading indicator for OAuth providers */}
+                    {oauthLoading && (
+                      <div style={{ padding: '12px 0', fontSize: 13, opacity: 0.6 }}>
+                        Loading connected integrations…
+                      </div>
+                    )}
+
                     {/* Connector list */}
                     <div className="pm-connectors-list">
                       {DEFAULT_CONNECTORS.map(conn => {
@@ -515,6 +628,7 @@ export default function ProfileMenu({ user, onLogout }) {
                         const form         = connectorForms[conn.id] || getDefaultFormFields(conn)
                         const justSaved    = connectorSaved === conn.id
                         const isApiRefOpen = apiReferOpen[conn.id]
+                        const opState      = oauthGetOperationState(conn.id) // 'linking' | 'refreshing' | 'unlinking' | null
 
                         return (
                           <div
@@ -542,8 +656,12 @@ export default function ProfileMenu({ user, onLogout }) {
                                       </svg>
                                       Connected
                                     </span>
-                                    <button className="pm-btn pm-btn-sm pm-btn-disconnect" onClick={() => handleDisconnect(conn.id)}>
-                                      Disconnect
+                                    <button
+                                      className="pm-btn pm-btn-sm pm-btn-disconnect"
+                                      onClick={() => handleDisconnect(conn.id)}
+                                      disabled={opState === 'unlinking'}
+                                    >
+                                      {opState === 'unlinking' ? 'Disconnecting…' : 'Disconnect'}
                                     </button>
                                   </>
                                 ) : isFormOpen ? (
@@ -597,11 +715,11 @@ export default function ProfileMenu({ user, onLogout }) {
                                         <div className="pm-form-group pm-form-group-full">
                                           <label className="pm-form-label">Redirect URL <span className="pm-field-required">*</span></label>
                                           <input
-                                            type="url"
+                                            type="text"
                                             className="pm-form-input"
                                             placeholder="https://yourdomain.com/callback"
-                                            value={form.redirect_url || ''}
-                                            onChange={e => handleConnectorFieldChange(conn.id, 'redirect_url', e.target.value)}
+                                            value={form.redirect_uri || ''}
+                                            onChange={e => handleConnectorFieldChange(conn.id, 'redirect_uri', e.target.value)}
                                           />
                                         </div>
                                       </div>
@@ -732,14 +850,9 @@ export default function ProfileMenu({ user, onLogout }) {
                                   <button
                                     className="pm-btn pm-btn-save pm-btn-sm"
                                     onClick={() => handleConnectorSave(conn.id)}
-                                    disabled={conn.type === 'zoho'
-                                      ? (!form.client_id?.trim() || !form.client_secret?.trim() || !form.redirect_url?.trim())
-                                      : conn.authType === 'header'
-                                        ? (!form.api_key?.trim() || !form.header_type?.trim())
-                                        : (!form.api_key?.trim())
-                                    }
+                                    disabled={opState === 'linking'}
                                   >
-                                    {justSaved ? '✓ Connected' : 'Save & Connect'}
+                                    {opState === 'linking' ? 'Connecting…' : justSaved ? '✓ Connected' : 'Save & Connect'}
                                   </button>
                                 </div>
                               </div>
@@ -772,11 +885,7 @@ export default function ProfileMenu({ user, onLogout }) {
                       </div>
                     </div>
 
-                    <div className="pm-account-danger">
-                      <h4>Danger zone</h4>
-                      <p>Permanently delete your account and all associated data. This action cannot be undone.</p>
-                      <button className="pm-btn pm-btn-danger">Delete account</button>
-                    </div>
+                    
                   </div>
                 )}
               </div>
